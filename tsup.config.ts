@@ -9,6 +9,7 @@ export default defineConfig({
     assets: "src/assets.ts",
     player: "src/player.ts",
     presence: "src/presence.ts",
+    performance: "src/performance.ts",
   },
   dts: true,
   format: ["esm"],

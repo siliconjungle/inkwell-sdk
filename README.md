@@ -20,8 +20,11 @@ const player = await Inkwell.player.get();
 const online = await Inkwell.presence.get();
 // { total, guestCount, players: [{ playerId, displayName, avatarUrl, isGuest }] }
 
+const stopMonitoring = Inkwell.performance.start();
+
 // When the player reaches your definition of completion:
 Inkwell.session.complete();
+stopMonitoring();
 ```
 
 ## Modular imports
@@ -33,6 +36,7 @@ import { track } from "@inkwellgame/sdk/analytics";
 import { trackedFetch, defaultTracker } from "@inkwellgame/sdk/assets";
 import { get as getPlayer } from "@inkwellgame/sdk/player";
 import { get as getPresence } from "@inkwellgame/sdk/presence";
+import { start as startPerformanceMonitoring } from "@inkwellgame/sdk/performance";
 ```
 
 ## Assets and loading bars
@@ -60,6 +64,10 @@ Inkwell.analytics.track("level.complete", { level: 3, score: 1200 });
 ```
 
 The SDK sends messages only to the trusted Inkwell player parent. It does not collect raw IP addresses, advertising identifiers, or cross-site tracking data.
+
+## Performance monitoring
+
+Performance monitoring is opt-in. `Inkwell.performance.start()` sends one bounded aggregate sample every 30 seconds: FPS, p95/max frame time, long-task count and duration, visibility, and JS heap usage where the browser exposes it. It does not send raw traces, resource URLs, hardware details, or fingerprints.
 
 ## Development
 

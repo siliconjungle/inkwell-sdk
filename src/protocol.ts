@@ -7,7 +7,8 @@ export type InkwellMessageType =
   | "analytics.track"
   | "assets.progress"
   | "player.get"
-  | "presence.get";
+  | "presence.get"
+  | "performance.sample";
 
 export type InkwellMessage = {
   source: typeof SDK_SOURCE;

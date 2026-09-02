@@ -11,12 +11,17 @@
     "type": "git",
     "url": "git+https://github.com/siliconjungle/inkwell-sdk.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "README.md",
     "LICENSE"
   ],
   "type": "module",
+  "types": "./dist/index.d.ts",
+  "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -46,6 +51,10 @@
     "./presence": {
       "types": "./dist/presence.d.ts",
       "import": "./dist/presence.js"
+    },
+    "./performance": {
+      "types": "./dist/performance.d.ts",
+      "import": "./dist/performance.js"
     }
   },
   "scripts": {
