@@ -2,6 +2,12 @@
 
 The tiny, optional SDK for browser games hosted on [Inkwell](https://inkwell.ing). Your game remains a normal static web app: relative asset URLs, `fetch`, Three.js loaders, and PixiJS Assets all work without this package.
 
+Until the package is published to npm, install it directly from the public repository:
+
+```bash
+npm install github:siliconjungle/inkwell-sdk
+```
+
 ```ts
 import { Inkwell } from "@inkwellgame/sdk";
 
