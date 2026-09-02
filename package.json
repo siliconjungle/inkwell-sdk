@@ -1,5 +1,5 @@
 {
-  "name": "@inkwellgame/sdk",
+  "name": "@silicon-jungle/inkwell-sdk",
   "version": "0.0.1",
   "description": "Tiny modular SDK for games hosted on Inkwell.",
   "homepage": "https://inkwell.ing/docs",

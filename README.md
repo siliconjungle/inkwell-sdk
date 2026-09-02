@@ -9,7 +9,7 @@ npm install github:siliconjungle/inkwell-sdk
 ```
 
 ```ts
-import { Inkwell } from "@inkwellgame/sdk";
+import { Inkwell } from "@silicon-jungle/inkwell-sdk";
 
 await startGame();
 Inkwell.ready();
@@ -30,13 +30,13 @@ stopMonitoring();
 ## Modular imports
 
 ```ts
-import { ready } from "@inkwellgame/sdk/core";
-import { complete } from "@inkwellgame/sdk/session";
-import { track } from "@inkwellgame/sdk/analytics";
-import { trackedFetch, defaultTracker } from "@inkwellgame/sdk/assets";
-import { get as getPlayer } from "@inkwellgame/sdk/player";
-import { get as getPresence } from "@inkwellgame/sdk/presence";
-import { start as startPerformanceMonitoring } from "@inkwellgame/sdk/performance";
+import { ready } from "@silicon-jungle/inkwell-sdk/core";
+import { complete } from "@silicon-jungle/inkwell-sdk/session";
+import { track } from "@silicon-jungle/inkwell-sdk/analytics";
+import { trackedFetch, defaultTracker } from "@silicon-jungle/inkwell-sdk/assets";
+import { get as getPlayer } from "@silicon-jungle/inkwell-sdk/player";
+import { get as getPresence } from "@silicon-jungle/inkwell-sdk/presence";
+import { start as startPerformanceMonitoring } from "@silicon-jungle/inkwell-sdk/performance";
 ```
 
 ## Assets and loading bars
