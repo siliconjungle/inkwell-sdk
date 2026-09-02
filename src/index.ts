@@ -15,7 +15,7 @@ export type { AggregateAssetProgress, AssetProgress } from "./assets.js";
 export { get as getPlayer, player } from "./player.js";
 export type { Player } from "./player.js";
 export { get as getPresence, presence } from "./presence.js";
-export type { Presence, PresentPlayer } from "./presence.js";
+export type { Presence, PresentFriend, PresentPlayer } from "./presence.js";
 export {
   performanceMonitoring,
   report as reportPerformance,

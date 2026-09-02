@@ -2,10 +2,10 @@
 
 The tiny, optional SDK for browser games hosted on [Inkwell](https://inkwell.ing). Your game remains a normal static web app: relative asset URLs, `fetch`, Three.js loaders, and PixiJS Assets all work without this package.
 
-Until the package is published to npm, install it directly from the public repository:
+Install the public package from npm:
 
 ```bash
-npm install github:siliconjungle/inkwell-sdk
+npm install @silicon-jungle/inkwell-sdk
 ```
 
 ```ts
@@ -18,7 +18,7 @@ const player = await Inkwell.player.get();
 // { displayName: 'james', avatarUrl: '...', isGuest: false }
 
 const online = await Inkwell.presence.get();
-// { total, guestCount, players: [{ playerId, displayName, avatarUrl, isGuest }] }
+// { total, guestCount, players, friends }
 
 const stopMonitoring = Inkwell.performance.start();
 

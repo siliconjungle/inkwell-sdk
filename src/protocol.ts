@@ -19,16 +19,16 @@ export type InkwellMessage = {
 };
 
 export function parentOrigin() {
-  if (typeof document === "undefined" || !document.referrer) return "*";
+  if (typeof document === "undefined" || !document.referrer) return null;
   try {
     const origin = new URL(document.referrer).origin;
     return origin === "https://inkwell.ing" ||
       origin === "https://www.inkwell.ing" ||
       origin.startsWith("http://localhost:")
       ? origin
-      : "*";
+      : null;
   } catch {
-    return "*";
+    return null;
   }
 }
 
@@ -38,6 +38,8 @@ export function requestId() {
 
 export function emit(type: InkwellMessageType, payload?: Record<string, unknown>) {
   if (typeof window === "undefined" || window.parent === window) return false;
+  const targetOrigin = parentOrigin();
+  if (!targetOrigin) return false;
   const message: InkwellMessage = {
     source: SDK_SOURCE,
     version: SDK_VERSION,
@@ -45,6 +47,6 @@ export function emit(type: InkwellMessageType, payload?: Record<string, unknown>
     payload,
     sentAt: Date.now(),
   };
-  window.parent.postMessage(message, parentOrigin());
+  window.parent.postMessage(message, targetOrigin);
   return true;
 }

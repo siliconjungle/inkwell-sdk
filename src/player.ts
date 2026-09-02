@@ -19,6 +19,7 @@ export function get(): Promise<Player> {
 
   const id = requestId();
   const expectedOrigin = parentOrigin();
+  if (!expectedOrigin) return Promise.resolve(GUEST);
   return new Promise((resolve) => {
     const finish = (value: Player) => {
       window.clearTimeout(timer);
@@ -27,7 +28,7 @@ export function get(): Promise<Player> {
     };
     const onMessage = (event: MessageEvent) => {
       if (event.source !== window.parent) return;
-      if (expectedOrigin !== '*' && event.origin !== expectedOrigin) return;
+      if (event.origin !== expectedOrigin) return;
       const message = event.data as {
         source?: unknown;
         version?: unknown;
