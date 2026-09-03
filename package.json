@@ -55,6 +55,26 @@
     "./performance": {
       "types": "./dist/performance.d.ts",
       "import": "./dist/performance.js"
+    },
+    "./backend": {
+      "types": "./dist/backend.d.ts",
+      "import": "./dist/backend.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "import": "./dist/storage.js"
+    },
+    "./config": {
+      "types": "./dist/config.d.ts",
+      "import": "./dist/config.js"
+    },
+    "./wire": {
+      "types": "./dist/wire.d.ts",
+      "import": "./dist/wire.js"
     }
   },
   "scripts": {
@@ -70,5 +90,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "overrides": {
+    "esbuild": "0.28.2"
   }
 }

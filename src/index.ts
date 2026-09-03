@@ -5,6 +5,7 @@ import { assets } from "./assets.js";
 import { player } from "./player.js";
 import { presence } from "./presence.js";
 import { performanceMonitoring } from "./performance.js";
+import { backend, connectBackend, requestBackend } from "./backend.js";
 
 export { ready } from "./core.js";
 export { complete, session } from "./session.js";
@@ -24,6 +25,24 @@ export {
   stop as stopPerformanceMonitoring,
 } from "./performance.js";
 export type { PerformanceMonitorOptions, PerformanceSnapshot } from "./performance.js";
+export {
+  backend,
+  BackendActionError,
+  BackendConnection,
+  BackendConnectionError,
+  connectBackend,
+  requestBackend,
+  WebSocketBackendTransport,
+  WebTransportBackendTransport,
+} from "./backend.js";
+export type {
+  AnyBackendProtocol,
+  BackendProtocol,
+  BackendTransport,
+  BackendTransportCapabilities,
+  BackendTransportKind,
+  UnreliableDelivery,
+} from "./backend.js";
 
 export const Inkwell = Object.freeze({
   ready,
@@ -33,5 +52,6 @@ export const Inkwell = Object.freeze({
   player,
   presence,
   performance: performanceMonitoring,
+  backend,
 });
 export default Inkwell;
