@@ -119,9 +119,13 @@ class RuntimeClient {
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }
 
-  async request(path: string, init: RequestInit = {}) {
+  async request(
+    path: string,
+    init: RequestInit = {},
+    timeoutMs = this.timeoutMs,
+  ) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     const externalSignal = init.signal;
     const abort = () => controller.abort();
     if (externalSignal?.aborted) controller.abort();
@@ -244,6 +248,7 @@ export class InkwellObjectStorage {
     const response = await this.client.request(
       `/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`,
       { method: 'PUT', headers, body: value, signal: options.signal },
+      120_000,
     );
     return (await response.json()) as StoredObjectInfo;
   }

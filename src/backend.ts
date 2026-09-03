@@ -506,7 +506,9 @@ export async function requestBackend(
   }
   const body = encodeBase64(await boundedRequestBody(init.body, init.signal));
   const id = requestId();
-  const timeoutMs = init.timeoutMs ?? 55_000;
+  // The first request can wake a fully stopped game server before executing
+  // creator code. Keep the default just above the platform's cold-start budget.
+  const timeoutMs = init.timeoutMs ?? 110_000;
   if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
     throw new BackendConnectionError('Backend request timeout is invalid.');
   }
