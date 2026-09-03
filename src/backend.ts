@@ -151,6 +151,10 @@ export class WebSocketBackendTransport implements BackendTransport {
         reject(new BackendConnectionError('WebSocket is unavailable.'));
         return;
       }
+      if (signal?.aborted) {
+        reject(new BackendConnectionError('Backend connection was cancelled.'));
+        return;
+      }
       const socket = new WebSocket(url, 'inkwell.backend.v1');
       const timer = setTimeout(() => {
         socket.close();
@@ -245,6 +249,9 @@ export class WebTransportBackendTransport implements BackendTransport {
     if (typeof WebTransport === 'undefined') {
       throw new BackendConnectionError('WebTransport is unavailable.');
     }
+    if (signal?.aborted) {
+      throw new BackendConnectionError('Backend connection was cancelled.');
+    }
     const target = new URL(url);
     if (target.protocol !== 'https:') {
       throw new BackendConnectionError('WebTransport requires a secure HTTPS URL.');
@@ -257,28 +264,32 @@ export class WebTransportBackendTransport implements BackendTransport {
     const abort = () => controller.abort();
     signal?.addEventListener('abort', abort, { once: true });
     const timer = setTimeout(() => controller.abort(), timeoutMs);
+    const aborted = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener(
+        'abort',
+        () =>
+          reject(
+            new BackendConnectionError(
+              signal?.aborted
+                ? 'Backend connection was cancelled.'
+                : 'Backend connection timed out.',
+            ),
+          ),
+        { once: true },
+      );
+    });
     try {
-      await Promise.race([
-        transport.ready,
-        new Promise<never>((_, reject) => {
-          controller.signal.addEventListener(
-            'abort',
-            () =>
-              reject(
-                new BackendConnectionError(
-                  signal?.aborted
-                    ? 'Backend connection was cancelled.'
-                    : 'Backend connection timed out.',
-                ),
-              ),
-            { once: true },
-          );
-        }),
+      await Promise.race([transport.ready, aborted]);
+      const stream = await Promise.race([
+        transport.createBidirectionalStream(),
+        aborted,
       ]);
-      const stream = await transport.createBidirectionalStream();
       const handshakeWriter = stream.writable.getWriter();
-      await handshakeWriter.write(new Uint8Array(4));
-      handshakeWriter.releaseLock();
+      try {
+        await Promise.race([handshakeWriter.write(new Uint8Array(4)), aborted]);
+      } finally {
+        handshakeWriter.releaseLock();
+      }
       return new WebTransportBackendTransport(transport, stream);
     } catch (error) {
       transport.close({ closeCode: 1, reason: 'Connection failed' });
