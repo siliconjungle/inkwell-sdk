@@ -382,6 +382,220 @@ function asConnectionError(error: unknown) {
     : new BackendConnectionError(String(error));
 }
 
+const MAX_BACKEND_HTTP_BODY_BYTES = 1024 * 1024;
+const BACKEND_HTTP_METHODS = new Set([
+  'GET',
+  'POST',
+  'PUT',
+  'PATCH',
+  'DELETE',
+  'HEAD',
+  'OPTIONS',
+]);
+const BLOCKED_BACKEND_HTTP_HEADERS = new Set([
+  'authorization',
+  'connection',
+  'content-length',
+  'cookie',
+  'host',
+  'proxy-authorization',
+  'set-cookie',
+  'te',
+  'trailer',
+  'transfer-encoding',
+  'upgrade',
+]);
+
+function encodeBase64(bytes: Uint8Array) {
+  let binary = '';
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return btoa(binary);
+}
+
+function decodeBase64(value: string) {
+  if (value.length > Math.ceil((MAX_BACKEND_HTTP_BODY_BYTES * 4) / 3) + 4) {
+    throw new BackendConnectionError('Backend response body is over 1 MiB.');
+  }
+  const binary = atob(value);
+  if (binary.length > MAX_BACKEND_HTTP_BODY_BYTES) {
+    throw new BackendConnectionError('Backend response body is over 1 MiB.');
+  }
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+async function boundedRequestBody(
+  body: BodyInit | null | undefined,
+  signal?: AbortSignal | null,
+) {
+  if (body === undefined || body === null) return new Uint8Array();
+  const reader = new Response(body).body?.getReader();
+  if (!reader) return new Uint8Array();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  while (true) {
+    if (signal?.aborted) {
+      await reader.cancel().catch(() => undefined);
+      throw new BackendConnectionError('Backend request was cancelled.');
+    }
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > MAX_BACKEND_HTTP_BODY_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      throw new BackendConnectionError('Backend request body is over 1 MiB.');
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
+export async function requestBackend(
+  path: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+) {
+  if (typeof window === 'undefined' || window.parent === window) {
+    throw new BackendConnectionError('Backend requests require an Inkwell player.');
+  }
+  const expectedOrigin = parentOrigin();
+  if (!expectedOrigin) {
+    throw new BackendConnectionError('The Inkwell player origin is not trusted.');
+  }
+  const method = (init.method || (init.body ? 'POST' : 'GET')).toUpperCase();
+  if (!BACKEND_HTTP_METHODS.has(method)) {
+    throw new BackendConnectionError('Backend request method is invalid.');
+  }
+  if (
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.startsWith('//') ||
+    path.length > 2048 ||
+    /[\r\n]/.test(path)
+  ) {
+    throw new BackendConnectionError('Backend request path is invalid.');
+  }
+  if ((method === 'GET' || method === 'HEAD') && init.body != null) {
+    throw new BackendConnectionError(`${method} backend requests cannot have a body.`);
+  }
+  const headers = new Headers(init.headers);
+  const serializedHeaders: Record<string, string> = {};
+  let headerBytes = 0;
+  for (const [name, value] of headers) {
+    if (
+      BLOCKED_BACKEND_HTTP_HEADERS.has(name) ||
+      name.startsWith('x-inkwell-')
+    ) {
+      throw new BackendConnectionError(`Backend request header ${name} is reserved.`);
+    }
+    headerBytes += name.length + value.length;
+    if (Object.keys(serializedHeaders).length >= 64 || headerBytes > 16 * 1024) {
+      throw new BackendConnectionError('Backend request headers are too large.');
+    }
+    serializedHeaders[name] = value;
+  }
+  const body = encodeBase64(await boundedRequestBody(init.body, init.signal));
+  const id = requestId();
+  const timeoutMs = init.timeoutMs ?? 55_000;
+  if (!Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 120_000) {
+    throw new BackendConnectionError('Backend request timeout is invalid.');
+  }
+  return new Promise<Response>((resolve, reject) => {
+    const finish = (result: Response | Error) => {
+      clearTimeout(timer);
+      init.signal?.removeEventListener('abort', onAbort);
+      window.removeEventListener('message', onMessage);
+      if (result instanceof Error) reject(result);
+      else resolve(result);
+    };
+    const onAbort = () =>
+      finish(new BackendConnectionError('Backend request was cancelled.'));
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.origin !== expectedOrigin) return;
+      const message = event.data as {
+        source?: unknown;
+        version?: unknown;
+        type?: unknown;
+        payload?: {
+          requestId?: unknown;
+          response?: { status?: unknown; headers?: unknown; body?: unknown };
+          error?: unknown;
+        };
+      };
+      if (
+        message?.source !== 'inkwell-platform' ||
+        message.version !== 1 ||
+        message.type !== 'backend.fetch.result' ||
+        message.payload?.requestId !== id
+      ) {
+        return;
+      }
+      if (typeof message.payload.error === 'string') {
+        finish(new BackendConnectionError(message.payload.error));
+        return;
+      }
+      const response = message.payload.response;
+      if (
+        !response ||
+        typeof response.status !== 'number' ||
+        !Number.isInteger(response.status) ||
+        response.status < 200 ||
+        response.status > 599 ||
+        !response.headers ||
+        typeof response.headers !== 'object' ||
+        typeof response.body !== 'string'
+      ) {
+        finish(new BackendConnectionError('Invalid backend response.'));
+        return;
+      }
+      try {
+        const responseBody = decodeBase64(response.body);
+        finish(
+          new Response(responseBody.byteLength ? responseBody : null, {
+            status: response.status,
+            headers: response.headers as Record<string, string>,
+          }),
+        );
+      } catch {
+        finish(new BackendConnectionError('Invalid backend response.'));
+      }
+    };
+    const timer = setTimeout(
+      () => finish(new BackendConnectionError('Backend request timed out.')),
+      timeoutMs,
+    );
+    if (init.signal?.aborted) {
+      finish(new BackendConnectionError('Backend request was cancelled.'));
+      return;
+    }
+    init.signal?.addEventListener('abort', onAbort, { once: true });
+    window.addEventListener('message', onMessage);
+    window.parent.postMessage(
+      {
+        source: 'inkwell-sdk',
+        version: 1,
+        type: 'backend.fetch',
+        payload: {
+          requestId: id,
+          request: { method, path, headers: serializedHeaders, body },
+        },
+        sentAt: Date.now(),
+      },
+      expectedOrigin,
+    );
+  });
+}
+
 async function requestConnection(timeoutMs: number): Promise<ConnectionDescriptor> {
   if (typeof window === 'undefined' || window.parent === window)
     throw new BackendConnectionError('Backend connections require an Inkwell player.');
@@ -675,4 +889,4 @@ export async function connectBackend<
   return new BackendConnection<Protocol>(transport, options.actionTimeoutMs);
 }
 
-export const backend = Object.freeze({ connect: connectBackend });
+export const backend = Object.freeze({ connect: connectBackend, request: requestBackend });

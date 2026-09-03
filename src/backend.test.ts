@@ -5,6 +5,7 @@ import {
   BackendActionError,
   BackendConnection,
   BackendConnectionError,
+  requestBackend,
   type BackendTransport,
 } from './backend.js';
 import { BACKEND_PROTOCOL_VERSION, decodeFrame, encodeFrame } from './wire.js';
@@ -121,4 +122,73 @@ test('action errors, aborts and connection closure reject pending work', async (
   transport.handlers.close(new BackendConnectionError('gone'));
   await assert.rejects(pending, /gone/);
   assert.throws(() => connection.sendUnreliable('move', { x: 1 }), /closed/);
+});
+
+test('backend request bridge preserves binary bodies without exposing session credentials', async () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const originalDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const events = new EventTarget();
+  let observed: Record<string, unknown> | undefined;
+  const parent = {
+    postMessage(message: unknown) {
+      observed = message as Record<string, unknown>;
+      const payload = observed.payload as {
+        requestId: string;
+        request: { body: string };
+      };
+      const responseEvent = new Event('message') as Event & {
+        source: unknown;
+        origin: string;
+        data: unknown;
+      };
+      Object.assign(responseEvent, {
+        source: parent,
+        origin: 'https://inkwell.ing',
+        data: {
+          source: 'inkwell-platform',
+          version: 1,
+          type: 'backend.fetch.result',
+          payload: {
+            requestId: payload.requestId,
+            response: {
+              status: 201,
+              headers: { 'content-type': 'application/octet-stream' },
+              body: payload.request.body,
+            },
+          },
+        },
+      });
+      queueMicrotask(() => events.dispatchEvent(responseEvent));
+    },
+  };
+  const fakeWindow = {
+    parent,
+    addEventListener: events.addEventListener.bind(events),
+    removeEventListener: events.removeEventListener.bind(events),
+  };
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: fakeWindow,
+  });
+  Object.defineProperty(globalThis, 'document', {
+    configurable: true,
+    value: { referrer: 'https://inkwell.ing/games/example/play' },
+  });
+  try {
+    const response = await requestBackend('/save', {
+      method: 'POST',
+      body: new Uint8Array([0, 1, 2, 255]),
+    });
+    assert.equal(response.status, 201);
+    assert.deepEqual(
+      Array.from(new Uint8Array(await response.arrayBuffer())),
+      [0, 1, 2, 255],
+    );
+    assert.equal(observed?.type, 'backend.fetch');
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
+    else Reflect.deleteProperty(globalThis, 'window');
+    if (originalDocument) Object.defineProperty(globalThis, 'document', originalDocument);
+    else Reflect.deleteProperty(globalThis, 'document');
+  }
 });

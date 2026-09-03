@@ -5,7 +5,7 @@ import { assets } from "./assets.js";
 import { player } from "./player.js";
 import { presence } from "./presence.js";
 import { performanceMonitoring } from "./performance.js";
-import { backend, connectBackend } from "./backend.js";
+import { backend, connectBackend, requestBackend } from "./backend.js";
 
 export { ready } from "./core.js";
 export { complete, session } from "./session.js";
@@ -31,6 +31,7 @@ export {
   BackendConnection,
   BackendConnectionError,
   connectBackend,
+  requestBackend,
   WebSocketBackendTransport,
   WebTransportBackendTransport,
 } from "./backend.js";

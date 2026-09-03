@@ -147,6 +147,7 @@ export type BackendDefinition<
   fetch?: (
     request: Request,
     context: BackendContext<Protocol>,
+    identity: BackendIdentity,
   ) => Response | Promise<Response>;
   shutdown?: (context: BackendContext<Protocol>) => void | Promise<void>;
 }>;
@@ -347,7 +348,7 @@ export class BackendServer<
     await this.definition.disconnect?.(connection, this.context);
   }
 
-  async handleFetch(request: Request) {
+  async handleFetch(request: Request, identity: BackendIdentity) {
     await this.start();
     if (this.shuttingDown) {
       return new Response('Backend is shutting down.', { status: 503 });
@@ -355,7 +356,7 @@ export class BackendServer<
     if (!this.definition.fetch) {
       return new Response('Not found.', { status: 404 });
     }
-    return this.definition.fetch(request, this.context);
+    return this.definition.fetch(request, this.context, identity);
   }
 
   async shutdown() {

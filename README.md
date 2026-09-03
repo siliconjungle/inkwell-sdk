@@ -37,7 +37,31 @@ import { trackedFetch, defaultTracker } from "@silicon-jungle/inkwell-sdk/assets
 import { get as getPlayer } from "@silicon-jungle/inkwell-sdk/player";
 import { get as getPresence } from "@silicon-jungle/inkwell-sdk/presence";
 import { start as startPerformanceMonitoring } from "@silicon-jungle/inkwell-sdk/performance";
+import { connectBackend, requestBackend } from "@silicon-jungle/inkwell-sdk/backend";
 ```
+
+## Creator backends
+
+Use one logical on-demand backend for a room, small persistent world,
+matchmaking, occasional API work, or a combination. Realtime connections prefer
+WebTransport reliable streams plus unreliable QUIC datagrams and fall back to
+WebSocket when necessary.
+
+```ts
+const connection = await Inkwell.backend.connect();
+await connection.sendReliable("chat.send", { text: "hello" });
+connection.sendUnreliable("player.input", { x: 1, y: 0 });
+
+const response = await Inkwell.backend.request("/inventory/save", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ slots }),
+});
+```
+
+Server code exports `defineBackend(...)` from the `/server` entry point. Its
+`fetch` handler receives the authenticated, bounded player identity as the third
+argument. Browser request/response bodies are capped at 1 MiB.
 
 ## Assets and loading bars
 

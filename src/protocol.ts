@@ -9,7 +9,8 @@ export type InkwellMessageType =
   | "player.get"
   | "presence.get"
   | "performance.sample"
-  | "backend.connect";
+  | "backend.connect"
+  | "backend.fetch";
 
 export type InkwellMessage = {
   source: typeof SDK_SOURCE;

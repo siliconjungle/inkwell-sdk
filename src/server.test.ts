@@ -122,7 +122,16 @@ test('server runs lifecycle, events, actions and broadcasts', async () => {
     payload: 6,
   });
 
-  const response = await server.handleFetch(new Request('https://runtime.test/health'));
+  const response = await server.handleFetch(
+    new Request('https://runtime.test/health'),
+    {
+      playerId: 'player',
+      username: 'tester',
+      displayName: 'Tester',
+      avatarUrl: null,
+      isGuest: false,
+    },
+  );
   assert.deepEqual(await response.json(), { path: '/health' });
   await server.remove(first.id);
   assert.equal(server.connectionCount, 1);
