@@ -11,7 +11,11 @@ const directory = await mkdtemp(path.join(tmpdir(), 'inkwell-sdk-package-'));
 const run = (command, args, cwd = directory) =>
   execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 try {
-  const [packed] = JSON.parse(run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory], root));
+  const metadata = JSON.parse(run('npm', ['pack', '--json', '--ignore-scripts', '--pack-destination', directory], root));
+  // npm 11 returns an array; npm 12 keys the result by package name.
+  const packed = Array.isArray(metadata) ? metadata[0] : metadata[pkg.name];
+  assert.equal(packed?.name, pkg.name);
+  assert.equal(path.basename(packed.filename), packed.filename);
   assert.equal(packed.version, pkg.version);
   await writeFile(path.join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
   run('npm', ['install', '--ignore-scripts', '--no-audit', '--no-fund', '--offline', path.join(directory, packed.filename)]);
