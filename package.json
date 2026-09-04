@@ -1,6 +1,6 @@
 {
   "name": "@silicon-jungle/inkwell-sdk",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Tiny modular SDK for games hosted on Inkwell.",
   "homepage": "https://inkwell.ing/docs",
   "bugs": {
@@ -24,10 +24,22 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
-    "./offline": { "types": "./dist/offline.d.ts", "import": "./dist/offline.js" },
-    "./chat": { "types": "./dist/chat.d.ts", "import": "./dist/chat.js" },
-    "./achievements": { "types": "./dist/achievements.d.ts", "import": "./dist/achievements.js" },
-    "./stats": { "types": "./dist/stats.d.ts", "import": "./dist/stats.js" },
+    "./offline": {
+      "types": "./dist/offline.d.ts",
+      "import": "./dist/offline.js"
+    },
+    "./chat": {
+      "types": "./dist/chat.d.ts",
+      "import": "./dist/chat.js"
+    },
+    "./achievements": {
+      "types": "./dist/achievements.d.ts",
+      "import": "./dist/achievements.js"
+    },
+    "./stats": {
+      "types": "./dist/stats.d.ts",
+      "import": "./dist/stats.js"
+    },
     "./leaderboards": {
       "types": "./dist/leaderboards.d.ts",
       "import": "./dist/leaderboards.js"
