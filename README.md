@@ -1,5 +1,39 @@
 # Inkwell SDK
 
+### Negotiated binary events (0.0.7)
+
+JSON events and actions remain compatible with existing games. For compact game
+packets, a backend can opt in with `defineBackend({ binaryEvents: true,
+binaryMessages: { motion(bytes, connection, context, delivery) { /* validate */ } } })`.
+After connecting, call `await connection.negotiateBinaryEvents()` before selecting
+the binary game protocol. It returns `false` for an older or opted-out server, or
+after its default 2-second negotiation timeout; connection and transport failures
+reject. The optional `timeoutMs` must be positive and at most 60 seconds. A result
+is cached for that connection; reconnect to renegotiate.
+
+Both connection types expose `binaryEvents`, `sendBinaryReliable(name, bytes)`
+and `sendBinaryUnreliable(name, bytes)`. Clients subscribe with
+`onBinary(name, (bytes, delivery) => {})`, which returns an unsubscribe function.
+Binary handlers are separate from JSON `on`/`messages` handlers. The sender copies
+the `Uint8Array` view into its frame. Reliable sends return a promise; unreliable
+sends return whether the local transport accepted the frame, not a delivery ACK.
+Sending binary before negotiation throws. Datagrams that overtake the negotiation
+response are discarded; reliable binary requires completed negotiation.
+
+The `@silicon-jungle/inkwell-sdk/wire` export `binaryEventOverhead(name)` returns
+the frame overhead: 5 bytes plus the validated ASCII event-name length. Subtract
+it from `connection.capabilities.maxUnreliableFrameBytes` before packing payloads.
+The complete frame remains limited to 1,200 bytes for unreliable delivery (or the
+smaller negotiated transport limit) and 64 KiB for reliable delivery. The wire
+format is `IBE`, version byte `1`, one byte of name length, ASCII name, then raw
+payload. `encodeBinaryEvent` and `decodeFrame` support that format; the latter
+returns `kind: 'event.binary'` with a copied `Uint8Array` payload.
+
+`inkwell.binary.negotiate` is a reserved reliable action. Binary encoding adds no
+delivery guarantee or game schema validation: keep input authority on the server,
+validate fields, and use explicit baseline/dictionary acknowledgements when a
+packet depends on prior game state. Existing JSON actions stay JSON.
+
 The tiny, optional SDK for browser games hosted on [Inkwell](https://inkwell.ing). Your game remains a normal static web app: relative asset URLs, `fetch`, Three.js loaders, and PixiJS Assets all work without this package.
 
 Install the public package from npm:

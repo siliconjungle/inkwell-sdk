@@ -2,10 +2,18 @@ export const BACKEND_PROTOCOL_VERSION = 1 as const;
 export const MAX_RELIABLE_FRAME_BYTES = 64 * 1024;
 export const MAX_UNRELIABLE_FRAME_BYTES = 1_200;
 export const MAX_ACTION_ID_LENGTH = 128;
+export const BINARY_EVENTS_VERSION = 1 as const;
+export const BINARY_NEGOTIATION_ACTION = 'inkwell.binary.negotiate';
 
 export type Delivery = 'reliable' | 'unreliable';
 
 export type BackendWireFrame =
+  | {
+      version: typeof BACKEND_PROTOCOL_VERSION;
+      kind: 'event.binary';
+      name: string;
+      payload: Uint8Array;
+    }
   | {
       version: typeof BACKEND_PROTOCOL_VERSION;
       kind: 'event';
@@ -54,17 +62,21 @@ export function validateMessageName(name: string) {
 }
 
 export function encodeFrame(
-  frame: BackendWireFrame,
+  frame: Exclude<BackendWireFrame, { kind: 'event.binary' }>,
   delivery: 'reliable' | 'unreliable' = 'reliable',
 ) {
   let serialised: string;
   try {
     serialised = JSON.stringify(frame);
   } catch {
-    throw new BackendProtocolError('Message payload must be JSON serialisable.');
+    throw new BackendProtocolError(
+      'Message payload must be JSON serialisable.',
+    );
   }
   if (serialised === undefined) {
-    throw new BackendProtocolError('Message payload must be JSON serialisable.');
+    throw new BackendProtocolError(
+      'Message payload must be JSON serialisable.',
+    );
   }
   const bytes = encoder.encode(serialised);
   const maximum =
@@ -76,6 +88,44 @@ export function encodeFrame(
       `${delivery} messages must be at most ${maximum} encoded bytes.`,
     );
   }
+  return bytes;
+}
+
+/** Bytes reserved by a binary event's version and validated ASCII name. */
+export function binaryEventOverhead(name: string): number {
+  validateMessageName(name);
+  return 5 + name.length;
+}
+
+/** Binary events use IBE/version, a one-byte name length, name, then raw payload. */
+export function encodeBinaryEvent(
+  name: string,
+  payload: Uint8Array,
+  delivery: Delivery = 'reliable',
+  maxFrameBytes?: number,
+): Uint8Array {
+  const overhead = binaryEventOverhead(name);
+  if (!(payload instanceof Uint8Array))
+    throw new BackendProtocolError('Binary payload must be a Uint8Array.');
+  const limit =
+    delivery === 'unreliable'
+      ? MAX_UNRELIABLE_FRAME_BYTES
+      : MAX_RELIABLE_FRAME_BYTES;
+  const maximum =
+    maxFrameBytes === undefined ? limit : Math.min(limit, maxFrameBytes);
+  if (
+    !Number.isSafeInteger(maximum) ||
+    maximum < overhead ||
+    payload.byteLength > maximum - overhead
+  ) {
+    throw new BackendProtocolError(
+      'Binary event exceeds the frame byte limit.',
+    );
+  }
+  const bytes = new Uint8Array(overhead + payload.byteLength);
+  bytes.set([0x49, 0x42, 0x45, BINARY_EVENTS_VERSION, name.length]);
+  for (let i = 0; i < name.length; i++) bytes[5 + i] = name.charCodeAt(i);
+  bytes.set(payload, overhead);
   return bytes;
 }
 
@@ -102,6 +152,33 @@ export function decodeFrame(
       : MAX_RELIABLE_FRAME_BYTES;
   if (!view.byteLength || view.byteLength > maximum) {
     throw new BackendProtocolError('Invalid backend frame size.');
+  }
+  if (view[0] === 0x49) {
+    if (
+      view.length < 5 ||
+      view[1] !== 0x42 ||
+      view[2] !== 0x45 ||
+      view[3] !== BINARY_EVENTS_VERSION
+    ) {
+      throw new BackendProtocolError('Unsupported binary event header.');
+    }
+    const length = view[4]!;
+    if (length < 1 || length > 80 || view.length < 5 + length) {
+      throw new BackendProtocolError('Invalid binary event name length.');
+    }
+    let name: string;
+    try {
+      name = decoder.decode(view.subarray(5, 5 + length));
+    } catch {
+      throw new BackendProtocolError('Invalid binary event name.');
+    }
+    validateMessageName(name);
+    return {
+      version: BACKEND_PROTOCOL_VERSION,
+      kind: 'event.binary',
+      name,
+      payload: view.slice(5 + length),
+    };
   }
   let value: unknown;
   try {

@@ -1,8 +1,11 @@
 import type { AnyBackendProtocol, BackendProtocol } from "./backend.js";
 import {
   BACKEND_PROTOCOL_VERSION,
+  BINARY_EVENTS_VERSION,
+  BINARY_NEGOTIATION_ACTION,
   BackendProtocolError,
   decodeFrame,
+  encodeBinaryEvent,
   encodeFrame,
   type Delivery,
 } from "./wire.js";
@@ -10,9 +13,9 @@ import type { InkwellDatabase, InkwellObjectStorage } from "./storage.js";
 import type { createServerLeaderboards } from "./leaderboards.js";
 import type { createServerAchievements } from "./achievements.js";
 import type { createServerStats } from "./stats.js";
-import type { createServerPresence } from './presence.js';
-import type { createServerChat } from './chat.js';
-export type BackendChat = Omit<ReturnType<typeof createServerChat>, 'connect'>;
+import type { createServerPresence } from "./presence.js";
+import type { createServerChat } from "./chat.js";
+export type BackendChat = Omit<ReturnType<typeof createServerChat>, "connect">;
 
 export type BackendIdentity = Readonly<{
   playerId: string;
@@ -56,8 +59,30 @@ export class BackendActionFailure extends Error {
   }
 }
 
-export class ServerConnection<Protocol extends BackendProtocol = AnyBackendProtocol> {
+const binaryConnections = new WeakSet<object>();
+
+export class ServerConnection<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+> {
   constructor(private readonly peer: BackendPeer) {}
+
+  get binaryEvents() {
+    return binaryConnections.has(this);
+  }
+
+  sendBinaryReliable(name: string, payload: Uint8Array) {
+    if (!this.binaryEvents)
+      throw new BackendProtocolError("Binary events have not been negotiated.");
+    return this.peer.sendReliable(encodeBinaryEvent(name, payload));
+  }
+
+  sendBinaryUnreliable(name: string, payload: Uint8Array) {
+    if (!this.binaryEvents)
+      throw new BackendProtocolError("Binary events have not been negotiated.");
+    return this.peer.sendUnreliable(
+      encodeBinaryEvent(name, payload, "unreliable"),
+    );
+  }
 
   get id() {
     return this.peer.id;
@@ -103,7 +128,9 @@ export class ServerConnection<Protocol extends BackendProtocol = AnyBackendProto
   }
 }
 
-export type BackendContext<Protocol extends BackendProtocol = AnyBackendProtocol> = Readonly<{
+export type BackendContext<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+> = Readonly<{
   presence: ReturnType<typeof createServerPresence>;
   chat: BackendChat;
   achievements: ReturnType<typeof createServerAchievements>;
@@ -126,8 +153,20 @@ export type BackendContext<Protocol extends BackendProtocol = AnyBackendProtocol
   ): number;
 }>;
 
-export type BackendDefinition<Protocol extends BackendProtocol = AnyBackendProtocol> = Readonly<{
+export type BackendDefinition<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+> = Readonly<{
   __inkwellBackend: 1;
+  binaryEvents?: boolean;
+  binaryMessages?: Record<
+    string,
+    (
+      payload: Uint8Array,
+      connection: ServerConnection<Protocol>,
+      context: BackendContext<Protocol>,
+      delivery: Delivery,
+    ) => void | Promise<void>
+  >;
   start?: (context: BackendContext<Protocol>) => void | Promise<void>;
   connect?: (
     connection: ServerConnection<Protocol>,
@@ -150,7 +189,9 @@ export type BackendDefinition<Protocol extends BackendProtocol = AnyBackendProto
       payload: ActionInput<Protocol["actions"][Name]>,
       connection: ServerConnection<Protocol>,
       context: BackendContext<Protocol>,
-    ) => ActionOutput<Protocol["actions"][Name]> | Promise<ActionOutput<Protocol["actions"][Name]>>;
+    ) =>
+      | ActionOutput<Protocol["actions"][Name]>
+      | Promise<ActionOutput<Protocol["actions"][Name]>>;
   };
   fetch?: (
     request: Request,
@@ -165,10 +206,14 @@ type BackendDefinitionInput<Protocol extends BackendProtocol> = Omit<
   "__inkwellBackend"
 >;
 
-export function defineBackend<Protocol extends BackendProtocol = AnyBackendProtocol>(
-  definition: BackendDefinitionInput<Protocol>,
-): BackendDefinition<Protocol> {
-  if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+export function defineBackend<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+>(definition: BackendDefinitionInput<Protocol>): BackendDefinition<Protocol> {
+  if (
+    !definition ||
+    typeof definition !== "object" ||
+    Array.isArray(definition)
+  ) {
     throw new TypeError("Backend definition must be an object.");
   }
   return Object.freeze({ ...definition, __inkwellBackend: 1 as const });
@@ -176,8 +221,13 @@ export function defineBackend<Protocol extends BackendProtocol = AnyBackendProto
 
 const MAX_ACTIVE_ACTIONS_PER_CONNECTION = 32;
 
-export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol> {
-  private readonly connectionsById = new Map<string, ServerConnection<Protocol>>();
+export class BackendServer<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+> {
+  private readonly connectionsById = new Map<
+    string,
+    ServerConnection<Protocol>
+  >();
   private readonly peersById = new Map<string, BackendPeer>();
   private readonly activeActions = new Map<string, Set<string>>();
   private readonly context: BackendContext<Protocol>;
@@ -229,12 +279,12 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
 
   start() {
     if (!this.startPromise) {
-      this.startPromise = Promise.resolve(this.definition.start?.(this.context)).catch(
-        (error: unknown) => {
-          this.startPromise = null;
-          throw error;
-        },
-      );
+      this.startPromise = Promise.resolve(
+        this.definition.start?.(this.context),
+      ).catch((error: unknown) => {
+        this.startPromise = null;
+        throw error;
+      });
     }
     return this.startPromise;
   }
@@ -280,14 +330,60 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
     if (frame.kind === "event") {
       const handler = this.definition.messages?.[frame.name];
       if (handler) {
-        await handler(frame.payload as never, connection, this.context, delivery);
+        await handler(
+          frame.payload as never,
+          connection,
+          this.context,
+          delivery,
+        );
       }
+      return;
+    }
+    if (frame.kind === "event.binary") {
+      if (!connection.binaryEvents) {
+        peer.close(1008, "Binary events have not been negotiated");
+        await this.remove(peerId);
+        return;
+      }
+      await this.definition.binaryMessages?.[frame.name]?.(
+        frame.payload,
+        connection,
+        this.context,
+        delivery,
+      );
       return;
     }
     if (frame.kind !== "action.request") return;
     if (delivery !== "reliable") {
       peer.close(1008, "Actions require reliable delivery");
       await this.remove(peerId);
+      return;
+    }
+    if (frame.name === BINARY_NEGOTIATION_ACTION) {
+      if (
+        this.definition.binaryEvents !== true ||
+        typeof frame.payload !== "object" ||
+        frame.payload === null ||
+        (frame.payload as { version?: unknown }).version !==
+          BINARY_EVENTS_VERSION
+      ) {
+        await this.sendActionError(
+          peer,
+          frame.id,
+          "unsupported_binary",
+          "Binary events are unavailable.",
+        );
+      } else {
+        binaryConnections.add(connection);
+        await peer.sendReliable(
+          encodeFrame({
+            version: 1,
+            kind: "action.result",
+            id: frame.id,
+            payload: { version: BINARY_EVENTS_VERSION },
+          }),
+        );
+      }
       return;
     }
     const active = this.activeActions.get(peerId) ?? new Set<string>();
@@ -311,13 +407,22 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
     }
     const handler = this.definition.actions?.[frame.name];
     if (!handler) {
-      await this.sendActionError(peer, frame.id, "unknown_action", "Unknown action.");
+      await this.sendActionError(
+        peer,
+        frame.id,
+        "unknown_action",
+        "Unknown action.",
+      );
       return;
     }
     active.add(frame.id);
     this.activeActions.set(peerId, active);
     try {
-      const payload = await handler(frame.payload as never, connection, this.context);
+      const payload = await handler(
+        frame.payload as never,
+        connection,
+        this.context,
+      );
       await peer.sendReliable(
         encodeFrame({
           version: BACKEND_PROTOCOL_VERSION,
@@ -341,6 +446,7 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
   async remove(peerId: string) {
     const connection = this.connectionsById.get(peerId);
     if (!connection) return;
+    binaryConnections.delete(connection);
     this.connectionsById.delete(peerId);
     this.peersById.delete(peerId);
     this.activeActions.delete(peerId);
@@ -371,7 +477,9 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
     this.activeActions.clear();
   }
 
-  private async broadcastReliable<Name extends EventName<Protocol["serverEvents"]>>(
+  private async broadcastReliable<
+    Name extends EventName<Protocol["serverEvents"]>,
+  >(
     name: Name,
     payload: Protocol["serverEvents"][Name],
     options: { except?: string | readonly string[] } = {},
@@ -392,14 +500,22 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
     const excluded = exclusionSet(options.except);
     let sent = 0;
     for (const connection of this.connections) {
-      if (!excluded.has(connection.id) && connection.sendUnreliable(name, payload)) {
+      if (
+        !excluded.has(connection.id) &&
+        connection.sendUnreliable(name, payload)
+      ) {
         sent += 1;
       }
     }
     return sent;
   }
 
-  private sendActionError(peer: BackendPeer, id: string, code: string, message: string) {
+  private sendActionError(
+    peer: BackendPeer,
+    id: string,
+    code: string,
+    message: string,
+  ) {
     return peer.sendReliable(
       encodeFrame({
         version: BACKEND_PROTOCOL_VERSION,
@@ -418,9 +534,8 @@ function exclusionSet(value?: string | readonly string[]) {
   return new Set(typeof value === "string" ? [value] : (value ?? []));
 }
 
-export function createBackendServer<Protocol extends BackendProtocol = AnyBackendProtocol>(
-  definition: BackendDefinition<Protocol>,
-  services: BackendRuntimeServices,
-) {
+export function createBackendServer<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+>(definition: BackendDefinition<Protocol>, services: BackendRuntimeServices) {
   return new BackendServer(definition, services);
 }
