@@ -146,6 +146,15 @@ and `createRuntimeServices()` additionally provide definition management,
 Cross-game achievement reads require public, published games and never permit
 cross-game writes. Hidden achievement details stay hidden until unlocked.
 
+Use `achievements.games({ query, after })` to discover public achievement-enabled
+games (100 per page, `nextCursor` for continuation), `summary({ game, username })`
+for `{ total, unlocked }`, or `count({ game })` for the enabled definition count.
+`percentages()` orders achievements by unlock percentage and includes the current
+player's `unlocked` state. `stats.get(name, { username })` reads one stat without
+scanning pages. Linked private stat values are not exposed through achievements
+to other players or other games; mark the stat `publicRead` to share that progress.
+Unlock status/dates remain available through permitted cross-game reads.
+
 Stats support integer/fractional/average values, bounds, increment-only writes,
 maximum changes, backend-only authority, and aggregated totals/daily history.
 Linked achievements unlock in the same transaction as a successful stat update.

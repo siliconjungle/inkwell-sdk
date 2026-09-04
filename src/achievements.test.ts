@@ -4,6 +4,25 @@ import { createAchievements, createServerAchievements, onAchievementNotification
 import { createStats, createServerStats } from "./stats.js";
 import type { GameServiceRequest } from "./game-services.js";
 
+test('achievement discovery/summary and direct stat reads preserve read selectors', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body });
+    if (service === 'stats') return { stats: [{ name: 'coins', value: 7 }], offline: true, cachedAt: 123, pendingWrites: 1 } as T;
+    if (body.operation === 'games') return { games: [{ slug: 'other-game', achievementCount: 3 }], nextCursor: 'other-game' } as T;
+    return { total: 3, unlocked: 1 } as T;
+  };
+  const achievements = createAchievements(request);
+  assert.equal((await achievements.games({ after: 'a', query: 'other' })).games[0].slug, 'other-game');
+  assert.deepEqual(await achievements.summary({ game: 'other-game', username: 'jungle' }), { total: 3, unlocked: 1 });
+  assert.equal(await achievements.count({ game: 'other-game' }), 3);
+  const value = await createStats(request).get('coins');
+  assert.equal(value?.value, 7); assert.equal(value?.offline, true); assert.equal(value?.pendingWrites, 1);
+  await createServerStats(request).forPlayer('jungle').get('coins');
+  assert.deepEqual(calls[0], { service: 'achievements', operation: 'games', after: 'a', query: 'other' });
+  assert.deepEqual(calls.at(-1), { service: 'stats', operation: 'get', name: 'coins', username: 'jungle' });
+});
+
 test("achievements allow cross-game reads, while unlock remains current-game scoped", async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(
