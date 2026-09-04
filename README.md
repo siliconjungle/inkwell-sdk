@@ -165,7 +165,7 @@ support testing, respecting backend-only write restrictions.
 
 `stats.aggregate({ historyDays: 7 })` returns up to 100 aggregated stats per page
 (`nextOffset` for continuation). Each has `totalExact`, a decimal string summing
-the stored player values without losing digits when totals exceed JavaScript's
+recorded player contributions without losing digits when totals exceed JavaScript's
 safe-integer range. `total` remains an approximate number for convenience.
 History accepts 0–60 UTC days, today first, including zero-activity days; each
 entry has `day`, approximate `delta`, and decimal-string `deltaExact`.
@@ -174,6 +174,16 @@ stats; converting the string back to `Number` can lose precision. This preserves
 aggregate precision, not precision already lost in individual floating-point
 game values. History measures daily net changes, including resets, not snapshots
 of each day's total. Omitting `historyDays` returns no history.
+
+For aggregated stats, `maxChange` caps each upload's signed contribution to the
+global total; the player's value still saves if it satisfies the other bounds.
+For example, starting at a default of 1000 and uploading 1002 with `maxChange: 5`
+saves 1002 for the player but contributes only 5 globally. Subsequent uploads
+contribute their raw change, capped in either direction; repeating a value adds
+nothing. Without aggregation, `maxChange` instead rejects excessive player-value
+changes. Reset removes that player's recorded contribution in full (an explicit
+correction, not another capped upload). Historic totals from before contribution
+accounting are preserved, with caps applied to subsequent changes.
 
 ### Leaderboard discovery and dynamic creation
 

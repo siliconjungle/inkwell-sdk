@@ -27,7 +27,7 @@ export type AggregateGameStat = {
   name: string;
   /** Approximate JavaScript number. Use totalExact when precision matters. */
   total: number;
-  /** Decimal sum of stored player values, without aggregate rounding. */
+  /** Exact sum of recorded player contributions, capped per upload by maxChange. */
   totalExact: string;
   /** UTC days, today first, including days with no activity. */
   history: {
