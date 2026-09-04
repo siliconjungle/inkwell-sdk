@@ -82,7 +82,23 @@ type ConnectionDescriptor = {
   url: string;
   transport: 'websocket' | 'webtransport';
   fallbackUrl?: string;
+  /** SHA-256 leaf certificate fingerprints, encoded as 64 lowercase hex digits. */
+  serverCertificateHashes?: string[];
 };
+
+function certificatePins(value: unknown): WebTransportHash[] | undefined {
+  if (value === undefined) return undefined;
+  if (
+    !Array.isArray(value) || value.length < 1 || value.length > 2 ||
+    value.some((hash) => typeof hash !== 'string' || !/^[a-f0-9]{64}$/.test(hash))
+  ) {
+    throw new BackendConnectionError('Invalid backend certificate fingerprints.');
+  }
+  return value.map((hash: string) => ({
+    algorithm: 'sha-256',
+    value: Uint8Array.from(hash.match(/../g)!, (byte) => Number.parseInt(byte, 16)).buffer,
+  }));
+}
 
 function createId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
@@ -231,13 +247,16 @@ export class WebTransportBackendTransport implements BackendTransport {
   private constructor(
     private readonly transport: WebTransport,
     stream: WebTransportBidirectionalStream,
+    direct: boolean,
   ) {
     this.reliableReader = stream.readable.getReader() as ReadableStreamDefaultReader<Uint8Array>;
     this.reliableWriter = stream.writable.getWriter() as WritableStreamDefaultWriter<Uint8Array>;
     this.datagramReader = transport.datagrams.readable.getReader() as ReadableStreamDefaultReader<Uint8Array>;
     this.datagramWriter = transport.datagrams.writable.getWriter() as WritableStreamDefaultWriter<Uint8Array>;
     this.capabilities = Object.freeze({
-      unreliable: 'native' as const,
+      // The legacy gateway still has a TCP runtime hop. Only direct endpoints
+      // provide native datagrams all the way to the game server.
+      unreliable: direct ? ('native' as const) : ('emulated' as const),
       maxUnreliableFrameBytes: Math.min(
         MAX_UNRELIABLE_FRAME_BYTES,
         transport.datagrams.maxDatagramSize,
@@ -245,7 +264,13 @@ export class WebTransportBackendTransport implements BackendTransport {
     });
   }
 
-  static async connect(url: string, timeoutMs: number, signal?: AbortSignal) {
+  static async connect(
+    url: string,
+    timeoutMs: number,
+    signal?: AbortSignal,
+    serverCertificateHashes?: readonly string[],
+  ) {
+    const pins = certificatePins(serverCertificateHashes);
     if (typeof WebTransport === 'undefined') {
       throw new BackendConnectionError('WebTransport is unavailable.');
     }
@@ -259,6 +284,8 @@ export class WebTransportBackendTransport implements BackendTransport {
     const transport = new WebTransport(target, {
       congestionControl: 'low-latency',
       requireUnreliable: true,
+      allowPooling: false,
+      ...(pins ? { serverCertificateHashes: pins } : {}),
     });
     const controller = new AbortController();
     const abort = () => controller.abort();
@@ -290,7 +317,7 @@ export class WebTransportBackendTransport implements BackendTransport {
       } finally {
         handshakeWriter.releaseLock();
       }
-      return new WebTransportBackendTransport(transport, stream);
+      return new WebTransportBackendTransport(transport, stream, pins !== undefined);
     } catch (error) {
       transport.close({ closeCode: 1, reason: 'Connection failed' });
       throw error instanceof BackendConnectionError
@@ -621,6 +648,7 @@ async function requestConnection(timeoutMs: number): Promise<ConnectionDescripto
         payload?: {
           requestId?: unknown;
           connection?: Partial<ConnectionDescriptor>;
+          descriptor?: Partial<ConnectionDescriptor>;
           error?: unknown;
         };
       };
@@ -635,7 +663,7 @@ async function requestConnection(timeoutMs: number): Promise<ConnectionDescripto
         finish(new BackendConnectionError(message.payload.error));
         return;
       }
-      const descriptor = message.payload.connection;
+      const descriptor = message.payload.descriptor ?? message.payload.connection;
       if (
         !descriptor ||
         typeof descriptor.url !== 'string' ||
@@ -650,6 +678,16 @@ async function requestConnection(timeoutMs: number): Promise<ConnectionDescripto
         typeof descriptor.fallbackUrl !== 'string'
       ) {
         finish(new BackendConnectionError('Invalid backend fallback response.'));
+        return;
+      }
+      try {
+        certificatePins(descriptor.serverCertificateHashes);
+        if (descriptor.serverCertificateHashes !== undefined &&
+            (descriptor.transport !== 'webtransport' || descriptor.fallbackUrl !== undefined)) {
+          throw new BackendConnectionError('A pinned backend requires direct WebTransport.');
+        }
+      } catch (error) {
+        finish(asConnectionError(error));
         return;
       }
       finish(descriptor as ConnectionDescriptor);
@@ -859,7 +897,7 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
 export async function connectBackend<
   Protocol extends BackendProtocol = AnyBackendProtocol,
 >(options: BackendConnectionOptions = {}) {
-  const connectTimeoutMs = options.connectTimeoutMs ?? 15_000;
+  const connectTimeoutMs = options.connectTimeoutMs ?? 60_000;
   let transport = options.transport;
   if (!transport) {
     const descriptor = await requestConnection(connectTimeoutMs);
@@ -869,9 +907,10 @@ export async function connectBackend<
           descriptor.url,
           connectTimeoutMs,
           options.signal,
+          descriptor.serverCertificateHashes,
         );
       } catch (error) {
-        if (!descriptor.fallbackUrl) throw error;
+        if (descriptor.serverCertificateHashes !== undefined || !descriptor.fallbackUrl) throw error;
         transport = await WebSocketBackendTransport.connect(
           descriptor.fallbackUrl,
           connectTimeoutMs,

@@ -44,8 +44,13 @@ import { connectBackend, requestBackend } from "@silicon-jungle/inkwell-sdk/back
 
 Use one logical on-demand backend for a room, small persistent world,
 matchmaking, occasional API work, or a combination. Realtime connections prefer
-WebTransport reliable streams plus unreliable QUIC datagrams and fall back to
-WebSocket when necessary.
+WebTransport reliable streams plus unreliable QUIC datagrams. When the platform
+provides a direct endpoint, the SDK verifies its certificate fingerprints and
+connects straight to the game server without a WebSocket fallback. Those
+connections report `capabilities.unreliable === "native"`. Legacy gateway
+connections can fall back to WebSocket and report `"emulated"` because their
+runtime hop uses TCP. The default connection timeout is 60 seconds to allow
+an idle server to start.
 
 ```ts
 const connection = await Inkwell.backend.connect();
