@@ -1,4 +1,4 @@
-import { requestGameService, type GameServiceRequest } from "./game-services.js";
+import { requestGameService, GameServiceError, type GameServiceRequest } from "./game-services.js";
 
 export type LeaderboardDefinition = {
   name: string;
@@ -25,6 +25,7 @@ export type LeaderboardResult = {
   board: LeaderboardInfo;
   total: number;
   entries: LeaderboardEntry[];
+  nextStart: number | null;
 };
 export type ScoreSubmission = {
   score: number;
@@ -76,6 +77,9 @@ export class Leaderboard {
       operation: "get",
       name: this.name,
     });
+  }
+  async getEntryCount() {
+    return (await this.request<{ total: number }>('leaderboards', { operation: 'count', name: this.name })).total;
   }
   list(query: LeaderboardQuery = {}) {
     return this.request<LeaderboardResult>("leaderboards", {
@@ -147,6 +151,15 @@ export class ServerLeaderboard extends Leaderboard {
 export function createLeaderboards(request: GameServiceRequest = requestGameService) {
   return Object.freeze({
     board: (name: string) => new Leaderboard(name, request),
+    async find(name: string) {
+      const board = new Leaderboard(name, request);
+      try { await board.get(); return board; }
+      catch (error) { if (error instanceof GameServiceError && error.status === 404) return null; throw error; }
+    },
+    async findOrCreate(definition: Pick<LeaderboardDefinition, 'name' | 'sort' | 'display'>) {
+      await request('leaderboards', { operation: 'findOrCreate', name: nameOf(definition.name), definition });
+      return new Leaderboard(definition.name, request);
+    },
     list: (offset = 0) =>
       request<{ boards: LeaderboardInfo[]; nextOffset: number | null }>("leaderboards", {
         operation: "list",
@@ -158,6 +171,15 @@ export function createServerLeaderboards(request: GameServiceRequest) {
   return Object.freeze({
     ...createLeaderboards(request),
     board: (name: string) => new ServerLeaderboard(name, request),
+    async find(name: string) {
+      const board = new ServerLeaderboard(name, request);
+      try { await board.get(); return board; }
+      catch (error) { if (error instanceof GameServiceError && error.status === 404) return null; throw error; }
+    },
+    async findOrCreate(definition: LeaderboardDefinition) {
+      await request('leaderboards', { operation: 'findOrCreate', name: nameOf(definition.name), definition });
+      return new ServerLeaderboard(definition.name, request);
+    },
     define: (definition: LeaderboardDefinition) =>
       request<{ board: LeaderboardInfo }>("leaderboards", {
         operation: "define",

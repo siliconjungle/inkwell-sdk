@@ -154,6 +154,26 @@ double-count. Await writes for persistence (or an explicit queued receipt when
 offline support is enabled). `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
 
+### Leaderboard discovery and dynamic creation
+
+```ts
+const existing = await Inkwell.leaderboards.find('highscores') // null if absent
+const daily = await Inkwell.leaderboards.findOrCreate({
+  name: 'daily:2026-09-04', sort: 'descending', display: 'numeric',
+})
+const players = await daily.getEntryCount()
+const page = await daily.list({ start: 1, limit: 20 })
+if (page.nextStart !== null) await daily.list({ start: page.nextStart, limit: 20 })
+```
+
+Browser find-or-create requires sign-in and accepts only name/sort/display.
+Existing settings are never changed, disabled boards stay disabled, and new
+requests are capped at 20 per player/game per UTC day. Backend find-or-create
+accepts full definitions and returns a management-capable board, like `define`.
+Enabled boards are listed on game pages, using `communityName` or the API name.
+Global/friends pagination uses `nextStart` even when blocked players leave gaps.
+The entry count is a total, not a list of private player identities.
+
 ### Optional offline progress
 
 ```ts
