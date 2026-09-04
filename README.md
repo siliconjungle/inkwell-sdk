@@ -288,6 +288,22 @@ awards. This subscription is browser-only (a no-op on a backend). Call
 `stopChanges()` when disposing the UI. Cross-game reads do not subscribe to
 other games' updates.
 
+## Backend game presence
+
+In a hosted backend, `await context.presence.get()` returns
+`{ total, guestCount, players }`. The same method is available on
+`createRuntimeServices().presence` for external game backends. It reads the
+current game's live platform presence room, not just connections to one backend
+process. Duplicate connections for the same game-scoped player count once.
+
+`players` contains at most50 public profiles (`playerId`, `username`,
+`displayName`, `avatarUrl`, `isGuest`); `total` still counts the whole room.
+Expired/revoked sessions are excluded. There is no game selector, account ID,
+email or viewer-specific friend list. Failed/malformed presence HTTP responses
+reject rather than pretending the game has zero players. Sessions whose access
+cannot be revalidated are excluded (fail closed). This is an on-demand snapshot, not
+a recommendation to poll; use it when game logic needs the current roster.
+
 ## Game chat (optional module)
 
 

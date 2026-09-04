@@ -2,6 +2,7 @@ import { createGameServiceRequest } from "./game-services.js";
 import { createServerLeaderboards } from "./leaderboards.js";
 import { createServerAchievements } from "./achievements.js";
 import { createServerStats } from "./stats.js";
+import { createServerPresence } from './presence.js';
 
 export type DatabaseValue = string | number | boolean | null;
 
@@ -309,6 +310,7 @@ export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {
   });
   return Object.freeze({
     database: new InkwellDatabase(client),
+    presence: createServerPresence(createGameServiceRequest({ baseUrl, token, fetch: options.fetch })),
     chat: createServerChat(createGameServiceRequest({ baseUrl, token, fetch: options.fetch })),
     achievements: createServerAchievements(
       createGameServiceRequest({ baseUrl, token, fetch: options.fetch }),

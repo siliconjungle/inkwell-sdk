@@ -86,7 +86,7 @@ export function createGameServiceRequest(options: {
     throw new TypeError("Game services require HTTPS.");
   if (base.username || base.password) throw new TypeError("URL credentials are not allowed.");
   return async <T>(service: string, request: Record<string, unknown>) => {
-    if (!["leaderboards", "achievements", "stats", "chat"].includes(service))
+    if (!["leaderboards", "achievements", "stats", "chat", "presence"].includes(service))
       throw new TypeError("Unknown game service.");
     const response = await (options.fetch ?? fetch)(
       new URL(`/api/v1/game-services/${service}`, base),
