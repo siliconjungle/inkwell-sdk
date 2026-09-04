@@ -24,6 +24,7 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+      - run: npm run test:package
       - name: Publish new package version
         if: github.event_name == 'push'
         shell: bash
