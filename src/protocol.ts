@@ -3,6 +3,8 @@ export const SDK_VERSION = 1 as const;
 
 export type InkwellMessageType =
   | "ready"
+  | "loading.progress"
+  | "loading.error"
   | "session.complete"
   | "analytics.track"
   | "assets.progress"

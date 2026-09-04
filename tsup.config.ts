@@ -7,6 +7,7 @@ export default defineConfig({
     stats: "src/stats.ts",
     index: "src/index.ts",
     core: "src/core.ts",
+    loading: "src/loading.ts",
     session: "src/session.ts",
     analytics: "src/analytics.ts",
     assets: "src/assets.ts",

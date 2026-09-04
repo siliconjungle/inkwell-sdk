@@ -24,9 +24,18 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
-    "./chat": { "types": "./dist/chat.d.ts", "import": "./dist/chat.js" },
-    "./achievements": { "types": "./dist/achievements.d.ts", "import": "./dist/achievements.js" },
-    "./stats": { "types": "./dist/stats.d.ts", "import": "./dist/stats.js" },
+    "./chat": {
+      "types": "./dist/chat.d.ts",
+      "import": "./dist/chat.js"
+    },
+    "./achievements": {
+      "types": "./dist/achievements.d.ts",
+      "import": "./dist/achievements.js"
+    },
+    "./stats": {
+      "types": "./dist/stats.d.ts",
+      "import": "./dist/stats.js"
+    },
     "./leaderboards": {
       "types": "./dist/leaderboards.d.ts",
       "import": "./dist/leaderboards.js"
@@ -82,10 +91,15 @@
     "./wire": {
       "types": "./dist/wire.d.ts",
       "import": "./dist/wire.js"
-    }
+    },
+    "./loading": {
+      "types": "./dist/loading.d.ts",
+      "import": "./dist/loading.js"
+    },
+    "./browser": "./dist/inkwell.browser.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && tsup --config tsup.browser.config.ts",
     "check": "tsc --noEmit",
     "test": "tsx --test src/*.test.ts"
   },

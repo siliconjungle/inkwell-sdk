@@ -1,4 +1,5 @@
 import { ready } from "./core.js";
+import { loading } from "./loading.js";
 import { session } from "./session.js";
 import { analytics } from "./analytics.js";
 import { assets } from "./assets.js";
@@ -17,6 +18,7 @@ export * from "./leaderboards.js";
 export { GameServiceError } from "./game-services.js";
 
 export { ready } from "./core.js";
+export { loading } from './loading.js';
 export { complete, session } from "./session.js";
 export { analytics, track } from "./analytics.js";
 export { AssetTracker, assets, defaultTracker, trackedFetch, trackPromise } from "./assets.js";
@@ -55,6 +57,7 @@ export type {
 
 export const Inkwell = Object.freeze({
   ready,
+  loading,
   session,
   analytics,
   assets,

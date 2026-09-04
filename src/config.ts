@@ -22,8 +22,13 @@ export type BackendRegion =
   | (string & {});
 
 export type InkwellGameConfig = {
+  game?: string;
   client: {
     directory: string;
+    entrypoint?: string;
+    engine?: { name: 'web' | 'godot' | 'unity' | 'unreal'; version?: string };
+    capabilities?: { threads?: boolean };
+    startup?: { mode: 'handshake' | 'compatible'; timeoutMs?: number };
   };
   backend?: {
     entry: string;
@@ -63,6 +68,39 @@ export function validateGameConfig(value: unknown): InkwellGameConfig {
   const result: InkwellGameConfig = {
     client: { directory: relativePath(client.directory, 'client.directory') },
   };
+  if (config.game !== undefined) {
+    if (typeof config.game !== 'string' || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(config.game) || config.game.length > 100) {
+      throw new TypeError('game must be an Inkwell game slug.');
+    }
+    result.game = config.game;
+  }
+  if (client.entrypoint !== undefined) {
+    const entrypoint = relativePath(client.entrypoint, 'client.entrypoint');
+    if (!/\.html?$/i.test(entrypoint) || entrypoint.includes('\\') || /[?#\u0000-\u001f]/.test(entrypoint) || entrypoint.split('/').some(p => !p || p === '.')) {
+      throw new TypeError('client.entrypoint must be a relative HTML file path.');
+    }
+    result.client.entrypoint = entrypoint;
+  }
+  if (client.engine !== undefined) {
+    if (!client.engine || typeof client.engine !== 'object' || Array.isArray(client.engine)) throw new TypeError('client.engine must be an object.');
+    const engine = client.engine as Record<string, unknown>;
+    if (!['web', 'godot', 'unity', 'unreal'].includes(engine.name as string)) throw new TypeError('Unsupported client.engine.name.');
+    if (engine.version !== undefined && (typeof engine.version !== 'string' || !engine.version.trim() || engine.version.length > 100 || /[\u0000-\u001f]/.test(engine.version))) throw new TypeError('client.engine.version must be a nonempty version string.');
+    result.client.engine = { name: engine.name as 'web', ...(engine.version === undefined ? {} : { version: engine.version as string }) };
+  }
+  if (client.capabilities !== undefined) {
+    if (!client.capabilities || typeof client.capabilities !== 'object' || Array.isArray(client.capabilities)) throw new TypeError('client.capabilities must be an object.');
+    const capabilities = client.capabilities as Record<string, unknown>;
+    if (capabilities.threads !== undefined && typeof capabilities.threads !== 'boolean') throw new TypeError('client.capabilities.threads must be boolean.');
+    result.client.capabilities = { threads: capabilities.threads === true };
+  }
+  if (client.startup !== undefined) {
+    if (!client.startup || typeof client.startup !== 'object' || Array.isArray(client.startup)) throw new TypeError('client.startup must be an object.');
+    const startup = client.startup as Record<string, unknown>;
+    if (!['handshake', 'compatible'].includes(startup.mode as string)) throw new TypeError('client.startup.mode must be handshake or compatible.');
+    if (startup.timeoutMs !== undefined && (!Number.isInteger(startup.timeoutMs) || Number(startup.timeoutMs) < 5_000 || Number(startup.timeoutMs) > 600_000)) throw new TypeError('client.startup.timeoutMs must be between 5000 and 600000.');
+    result.client.startup = { mode: startup.mode as 'handshake', ...(startup.timeoutMs === undefined ? {} : { timeoutMs: Number(startup.timeoutMs) }) };
+  }
   if (config.backend === undefined) return result;
   if (
     !config.backend ||
