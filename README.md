@@ -238,3 +238,20 @@ npm test
 ```
 
 MIT licensed.
+
+## Engine exports and startup
+
+A standalone browser bundle is shipped at `dist/inkwell.browser.js` (also exported as `/browser`). Copy it into your export and load it before the game loader to expose `window.Inkwell`. The Godot and Unity packages do this during export. Loading the bundle does not mark the game ready.
+
+```ts
+Inkwell.loading.progress(0.4); // null for indeterminate progress
+await startGame();
+Inkwell.ready(); // after the game becomes interactive
+// On a startup failure: Inkwell.loading.fail("Could not load the first level.");
+```
+
+`ready()` and failure are terminal for this page load; later progress is ignored. Retry reloads the game. Only send player-readable failure text, up to 500 characters. The platform applies the timeout declared in the project config. Legacy exports can explicitly choose `startup.mode: "compatible"` to retain their own loading UI.
+
+`defineGameConfig` from `/config` also accepts `game`, `client.entrypoint`, `client.engine`, `client.capabilities.threads`, and `client.startup`. Engine exports keep their own HTML shell. Thread support is opt-in and requires a compatible browser.
+
+Persistent game data remains developer-defined: use the existing backend `fetch` handler, trusted handler identity, database, and object storage. The engine examples demonstrate this without introducing a platform save format or a separate saves API.
