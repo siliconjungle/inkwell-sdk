@@ -12,6 +12,8 @@ import { achievements } from "./achievements.js";
 import { stats } from "./stats.js";
 import { chat } from './chat.js';
 import { offline } from './offline.js';
+import { invites } from './invites.js';
+export * from './invites.js';
 export * from './offline.js';
 export * from './chat.js';
 export * from "./achievements.js";
@@ -72,5 +74,6 @@ export const Inkwell = Object.freeze({
   stats,
   chat,
   offline,
+  invites,
 });
 export default Inkwell;

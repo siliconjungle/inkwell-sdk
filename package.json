@@ -24,6 +24,10 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
+    "./invites": {
+      "types": "./dist/invites.d.ts",
+      "import": "./dist/invites.js"
+    },
     "./offline": {
       "types": "./dist/offline.d.ts",
       "import": "./dist/offline.js"
