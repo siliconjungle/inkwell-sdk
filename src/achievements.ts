@@ -68,6 +68,12 @@ export type AchievementUnlock = {
   newlyUnlocked: boolean;
   unlockedAt: string;
 };
+export type AchievementPercentage = {
+  name: string;
+  percent: number;
+  unlockedPlayers: number;
+  unlocked: boolean;
+};
 
 export function createAchievements(request: GameServiceRequest = requestGameService) {
   return Object.freeze({
@@ -99,9 +105,15 @@ export function createAchievements(request: GameServiceRequest = requestGameServ
       request<AchievementUnlock | QueuedGameWrite>("achievements", { operation: "unlock", name }),
     clear: (name: string) =>
       request<{ success: true }>("achievements", { operation: "clear", name }),
+    async percentage(name: string, options: { game?: string } = {}) {
+      const result = await request<{ achievements: AchievementPercentage[] }>(
+        'achievements', { ...options, operation: 'percentages', name },
+      );
+      return result.achievements.find((achievement) => achievement.name === name) ?? null;
+    },
     percentages: (options: { game?: string; offset?: number } = {}) =>
       request<{
-        achievements: { name: string; percent: number; unlockedPlayers: number; unlocked: boolean }[];
+        achievements: AchievementPercentage[];
         nextOffset: number | null;
       }>("achievements", { ...options, operation: "percentages" }),
   });

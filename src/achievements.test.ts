@@ -4,6 +4,19 @@ import { createAchievements, createServerAchievements, onAchievementNotification
 import { createStats, createServerStats } from "./stats.js";
 import type { GameServiceRequest } from "./game-services.js";
 
+test('individual achievement percentages select the requested name and preserve cross-game scope', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(_service: string, body: Record<string, unknown>) => {
+    calls.push(body);
+    return { achievements: [{ name: 'winner', percent: 25, unlockedPlayers: 1, unlocked: true }] } as T;
+  };
+  const api = createAchievements(request);
+  assert.equal((await api.percentage('winner', { game: 'other-game' }))?.percent, 25);
+  assert.equal(await api.percentage('secret'), null);
+  assert.deepEqual(calls[0], { operation: 'percentages', name: 'winner', game: 'other-game' });
+  assert.equal((await createServerAchievements(request).percentage('winner'))?.unlockedPlayers, 1);
+});
+
 test('achievement discovery/summary and direct stat reads preserve read selectors', async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {

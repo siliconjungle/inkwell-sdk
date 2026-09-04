@@ -155,6 +155,11 @@ scanning pages. Linked private stat values are not exposed through achievements
 to other players or other games; mark the stat `publicRead` to share that progress.
 Unlock status/dates remain available through permitted cross-game reads.
 
+`achievements.percentage(name, { game? })` directly reads one achievement's
+completion percentage, signed-in player count and current-player unlock flag.
+It returns `null` for unavailable or still-hidden achievements. Use
+`achievements.percentages({ game?, offset? })` for the paginated ranking.
+
 Stats support integer/fractional/average values, bounds, increment-only writes,
 maximum changes, backend-only authority, and aggregated totals/daily history.
 Linked achievements unlock in the same transaction as a successful stat update.
