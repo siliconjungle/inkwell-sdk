@@ -24,18 +24,10 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
-    "./chat": {
-      "types": "./dist/chat.d.ts",
-      "import": "./dist/chat.js"
-    },
-    "./achievements": {
-      "types": "./dist/achievements.d.ts",
-      "import": "./dist/achievements.js"
-    },
-    "./stats": {
-      "types": "./dist/stats.d.ts",
-      "import": "./dist/stats.js"
-    },
+    "./offline": { "types": "./dist/offline.d.ts", "import": "./dist/offline.js" },
+    "./chat": { "types": "./dist/chat.d.ts", "import": "./dist/chat.js" },
+    "./achievements": { "types": "./dist/achievements.d.ts", "import": "./dist/achievements.js" },
+    "./stats": { "types": "./dist/stats.d.ts", "import": "./dist/stats.js" },
     "./leaderboards": {
       "types": "./dist/leaderboards.d.ts",
       "import": "./dist/leaderboards.js"

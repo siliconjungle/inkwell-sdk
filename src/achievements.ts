@@ -1,5 +1,6 @@
 import { requestGameService, type GameServiceRequest } from "./game-services.js";
 import { parentOrigin } from './protocol.js';
+import type { CachedGameRead, QueuedGameWrite } from './offline.js';
 
 export type AchievementNotification = {
   id: string; kind: 'unlocked' | 'progress'; name: string; title: string;
@@ -61,6 +62,7 @@ export type AchievementQuery = {
   locale?: string;
 };
 export type AchievementUnlock = {
+  queued?: false;
   name: string;
   unlocked: true;
   newlyUnlocked: boolean;
@@ -73,20 +75,21 @@ export function createAchievements(request: GameServiceRequest = requestGameServ
     indicateProgress: (name: string, current: number, max: number, options: { locale?: string } = {}) =>
       request<{ displayed: boolean }>('achievements', { ...options, operation: 'progress', name, current, max }),
     list: (options: AchievementQuery = {}) =>
-      request<{ achievements: Achievement[]; nextOffset: number | null }>("achievements", {
+      request<{ achievements: Achievement[]; nextOffset: number | null } & CachedGameRead>("achievements", {
         ...options,
         operation: "list",
       }),
     async get(name: string, options: AchievementQuery = {}) {
-      const result = await request<{ achievements: Achievement[] }>("achievements", {
+      const result = await request<{ achievements: Achievement[] } & CachedGameRead>("achievements", {
         ...options,
         operation: "get",
         name,
       });
-      return result.achievements[0] ?? null;
+      const achievement = result.achievements[0];
+      return achievement ? { ...achievement, offline: result.offline, cachedAt: result.cachedAt, pendingWrites: result.pendingWrites } : null;
     },
     unlock: (name: string) =>
-      request<AchievementUnlock>("achievements", { operation: "unlock", name }),
+      request<AchievementUnlock | QueuedGameWrite>("achievements", { operation: "unlock", name }),
     clear: (name: string) =>
       request<{ success: true }>("achievements", { operation: "clear", name }),
     percentages: (options: { game?: string; offset?: number } = {}) =>
