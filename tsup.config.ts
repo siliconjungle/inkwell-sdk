@@ -2,8 +2,13 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
+    offline: "src/offline.ts",
+    chat: "src/chat.ts",
+    achievements: "src/achievements.ts",
+    stats: "src/stats.ts",
     index: "src/index.ts",
     core: "src/core.ts",
+    loading: "src/loading.ts",
     session: "src/session.ts",
     analytics: "src/analytics.ts",
     assets: "src/assets.ts",
@@ -15,6 +20,7 @@ export default defineConfig({
     storage: "src/storage.ts",
     config: "src/config.ts",
     wire: "src/wire.ts",
+    leaderboards: "src/leaderboards.ts",
   },
   dts: true,
   format: ["esm"],

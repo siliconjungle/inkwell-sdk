@@ -1,4 +1,5 @@
 import { ready } from "./core.js";
+import { loading } from "./loading.js";
 import { session } from "./session.js";
 import { analytics } from "./analytics.js";
 import { assets } from "./assets.js";
@@ -6,8 +7,20 @@ import { player } from "./player.js";
 import { presence } from "./presence.js";
 import { performanceMonitoring } from "./performance.js";
 import { backend, connectBackend, requestBackend } from "./backend.js";
+import { leaderboards } from "./leaderboards.js";
+import { achievements } from "./achievements.js";
+import { stats } from "./stats.js";
+import { chat } from './chat.js';
+import { offline } from './offline.js';
+export * from './offline.js';
+export * from './chat.js';
+export * from "./achievements.js";
+export * from "./stats.js";
+export * from "./leaderboards.js";
+export { GameServiceError } from "./game-services.js";
 
 export { ready } from "./core.js";
+export { loading } from './loading.js';
 export { complete, session } from "./session.js";
 export { analytics, track } from "./analytics.js";
 export { AssetTracker, assets, defaultTracker, trackedFetch, trackPromise } from "./assets.js";
@@ -46,6 +59,7 @@ export type {
 
 export const Inkwell = Object.freeze({
   ready,
+  loading,
   session,
   analytics,
   assets,
@@ -53,5 +67,10 @@ export const Inkwell = Object.freeze({
   presence,
   performance: performanceMonitoring,
   backend,
+  leaderboards,
+  achievements,
+  stats,
+  chat,
+  offline,
 });
 export default Inkwell;
