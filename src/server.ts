@@ -10,6 +10,7 @@ import type { InkwellDatabase, InkwellObjectStorage } from "./storage.js";
 import type { createServerLeaderboards } from "./leaderboards.js";
 import type { createServerAchievements } from "./achievements.js";
 import type { createServerStats } from "./stats.js";
+import type { createServerPresence } from './presence.js';
 import type { createServerChat } from './chat.js';
 export type BackendChat = Omit<ReturnType<typeof createServerChat>, 'connect'>;
 
@@ -22,6 +23,7 @@ export type BackendIdentity = Readonly<{
 }>;
 
 export type BackendRuntimeServices = Readonly<{
+  presence: ReturnType<typeof createServerPresence>;
   chat: BackendChat;
   achievements: ReturnType<typeof createServerAchievements>;
   stats: ReturnType<typeof createServerStats>;
@@ -102,6 +104,7 @@ export class ServerConnection<Protocol extends BackendProtocol = AnyBackendProto
 }
 
 export type BackendContext<Protocol extends BackendProtocol = AnyBackendProtocol> = Readonly<{
+  presence: ReturnType<typeof createServerPresence>;
   chat: BackendChat;
   achievements: ReturnType<typeof createServerAchievements>;
   stats: ReturnType<typeof createServerStats>;
@@ -187,6 +190,7 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
   ) {
     const owner = this;
     this.context = Object.freeze({
+      presence: services.presence,
       chat: services.chat,
       leaderboards: services.leaderboards,
       achievements: services.achievements,

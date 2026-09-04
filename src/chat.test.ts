@@ -3,6 +3,22 @@ import test from 'node:test';
 import { createChat, createServerChat, type ChatMessage } from './chat.js';
 import type { GameServiceRequest } from './game-services.js';
 
+void test('default panel visibility is an explicit browser-only game UI request', async () => {
+  const calls: unknown[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { visible: body.visible } as T;
+  };
+  const chat = createChat(request);
+  assert.deepEqual(await chat.setDefaultPanelVisible(false), { visible: false });
+  assert.deepEqual(await chat.setDefaultPanelVisible(true), { visible: true });
+  assert.deepEqual(calls, [
+    { service: 'chat', operation: 'defaultPanel', visible: false },
+    { service: 'chat', operation: 'defaultPanel', visible: true },
+  ]);
+  assert.throws(() => chat.setDefaultPanelVisible('false' as unknown as boolean), /boolean/);
+  assert.equal('setDefaultPanelVisible' in createServerChat(request), false);
+});
+
 const message = (sequence: number): ChatMessage => ({ id: `message-${sequence}`, sequence, channel: 'game', senderId: 'p_1', author: { displayName: 'NPC' }, body: 'hello', recipients: [], createdAt: new Date().toISOString() });
 class FakeSocket {
   readyState = 1;
@@ -27,6 +43,39 @@ class FakeSocket {
   }
   close(code = 1000) { if (this.readyState === 3) return; this.readyState = 3; this.onclose?.({ code }); }
 }
+
+void test('block visibility removes cached messages by trusted sender and permits unblock/backend attribution', async () => {
+  let socket!: FakeSocket;
+  const request: GameServiceRequest = async <T>() => ({ url:'wss://realtime.inkwell.ing/connect',playerId:'p_2',channel:'game',expiresAt:Date.now()+300000 }) as T;
+  const connection = await createChat(request,() => { socket=new FakeSocket([message(1)]); return socket as unknown as WebSocket; }).connect();
+  try {
+    assert.equal(connection.messages.length,2);
+    socket.emit({type:'chat.visibility',channel:'game',senderIds:['p_1'],blockedSenderIds:['p_1']});
+    assert.equal(connection.messages.length,0);
+    socket.emit({type:'chat.message',message:{...message(4),author:{id:'p_2',displayName:'Spoofed'}}});
+    assert.equal(connection.messages.length,0);
+    socket.emit({type:'chat.message',message:{...message(5),senderId:'backend',author:{id:'p_1',displayName:'Creator character'}}});
+    assert.equal(connection.messages.length,1);
+    socket.emit({type:'chat.visibility',channel:'game',senderIds:['p_1'],blockedSenderIds:[]});
+    socket.emit({type:'chat.message',message:message(6)});
+    assert.deepEqual(connection.messages.map(m=>m.sequence),[5,6]);
+  } finally { connection.close(); }
+});
+
+void test('new block visibility during catch-up cannot be undone by stale history or buffered messages', async () => {
+  class RacingSocket extends FakeSocket {
+    override send(raw:string) {
+      const command=JSON.parse(raw);
+      if(command.operation!=='history') return super.send(raw);
+      this.emit({type:'chat.visibility',channel:'game',senderIds:['p_1'],blockedSenderIds:['p_1']});
+      this.emit({type:'chat.message',message:message(3)});
+      this.emit({type:'chat.result',requestId:command.requestId,result:{messages:[message(1)],nextCursor:1,hasMore:false,retentionHours:24,removedIds:[],retainedFrom:1,senderIds:['p_1'],blockedSenderIds:[]}});
+    }
+  }
+  const request: GameServiceRequest = async <T>() => ({url:'wss://realtime.inkwell.ing/connect',playerId:'p_2',channel:'game',expiresAt:Date.now()+300000}) as T;
+  const connection=await createChat(request,()=>new RacingSocket([]) as unknown as WebSocket).connect();
+  try { assert.deepEqual(connection.messages,[]); } finally { connection.close(); }
+});
 
 void test('chat connection catches up, deduplicates live messages, sends and cleans up', async () => {
   let socket!: FakeSocket;

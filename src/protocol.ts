@@ -22,10 +22,11 @@ export type InkwellMessage = {
   sentAt: number;
 };
 
-export function parentOrigin() {
-  if (typeof document === "undefined" || !document.referrer) return null;
+const PARENT_ORIGIN_KEY = 'inkwell:parent-origin:v1';
+function allowedParentOrigin(value: string | null | undefined) {
+  if (!value) return null;
   try {
-    const origin = new URL(document.referrer).origin;
+    const origin = new URL(value).origin;
     return origin === "https://inkwell.ing" ||
       origin === "https://www.inkwell.ing" ||
       origin.startsWith("http://localhost:")
@@ -34,6 +35,24 @@ export function parentOrigin() {
   } catch {
     return null;
   }
+}
+
+export function parentOrigin() {
+  if (typeof document === 'undefined') return null;
+  // Reloading an iframe changes document.referrer to the game's own URL.
+  // Chromium/WebKit expose the actual immediate parent's origin independently.
+  const ancestor = typeof window === 'undefined' ? undefined : window.location?.ancestorOrigins?.[0];
+  const origin = ancestor !== undefined ? allowedParentOrigin(ancestor) : allowedParentOrigin(document.referrer);
+  if (origin) {
+    try { window.sessionStorage.setItem(PARENT_ORIGIN_KEY, origin); } catch { /* Storage can be denied. */ }
+    return origin;
+  }
+  // An observed foreign parent takes precedence over any prior cached host.
+  if (ancestor !== undefined) return null;
+  // Firefox has no ancestorOrigins. Retain only an allowlisted host origin in
+  // this tab's game-origin storage; never a token or identity. Replies still
+  // require both the actual window.parent and this exact origin.
+  try { return allowedParentOrigin(window.sessionStorage.getItem(PARENT_ORIGIN_KEY)); } catch { return null; }
 }
 
 export function requestId() {

@@ -2,6 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
+    invites: "src/invites.ts",
     offline: "src/offline.ts",
     chat: "src/chat.ts",
     achievements: "src/achievements.ts",

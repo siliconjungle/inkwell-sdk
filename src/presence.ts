@@ -1,4 +1,5 @@
 import { parentOrigin, requestId } from "./protocol.js";
+import type { GameServiceRequest } from './game-services.js';
 
 export type PresentPlayer = {
   playerId: string;
@@ -131,3 +132,10 @@ export function get(): Promise<Presence> {
 }
 
 export const presence = Object.freeze({ get });
+
+/** Current game's online roster; no viewer-specific friends or account credentials. */
+export type BackendPresence = Pick<Presence, 'total' | 'guestCount' | 'players'>;
+
+export function createServerPresence(request: GameServiceRequest) {
+  return Object.freeze({ get: () => request<BackendPresence>('presence', { operation: 'get' }) });
+}

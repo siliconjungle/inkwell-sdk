@@ -7,6 +7,34 @@ export type AchievementNotification = {
   description: string; iconUrl: string | null; current?: number; max?: number;
 };
 
+export type AchievementChange = {
+  id: string;
+  kind: 'updated' | 'reset' | 'refresh';
+  names: string[];
+};
+
+/** Browser hint to re-read achievements after backend changes or reconnect. */
+export function onAchievementChange(listener: (change: AchievementChange) => void) {
+  const origin = parentOrigin();
+  if (typeof window === 'undefined' || !origin) return () => {};
+  const seen = new Set<string>();
+  const receive = (event: MessageEvent) => {
+    if (event.source !== window.parent || event.origin !== origin) return;
+    const message = event.data;
+    const change = message?.payload;
+    if (message?.source !== 'inkwell-platform' || message.version !== 1 || message.type !== 'achievements.changed' ||
+      !change || typeof change.id !== 'string' || !change.id || change.id.length > 100 ||
+      !['updated', 'reset', 'refresh'].includes(change.kind) ||
+      !Array.isArray(change.names) || change.names.length > 100 ||
+      !change.names.every((name: unknown) => typeof name === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(name)) || seen.has(change.id)) return;
+    seen.add(change.id);
+    if (seen.size > 100) seen.delete(seen.values().next().value!);
+    listener({ id: change.id, kind: change.kind, names: [...change.names] });
+  };
+  window.addEventListener('message', receive);
+  return () => window.removeEventListener('message', receive);
+}
+
 export function onAchievementNotification(listener: (notice: AchievementNotification) => void) {
   const origin = parentOrigin();
   if (typeof window === 'undefined' || !origin) return () => {};
@@ -68,9 +96,16 @@ export type AchievementUnlock = {
   newlyUnlocked: boolean;
   unlockedAt: string;
 };
+export type AchievementPercentage = {
+  name: string;
+  percent: number;
+  unlockedPlayers: number;
+  unlocked: boolean;
+};
 
 export function createAchievements(request: GameServiceRequest = requestGameService) {
   return Object.freeze({
+    onChange: onAchievementChange,
     games: (options: { after?: string; query?: string } = {}) =>
       request<{ games: { slug: string; title: string; publisherUsername: string; achievementCount: number }[]; nextCursor: string | null }>('achievements', { ...options, operation: 'games' }),
     summary: (options: Pick<AchievementQuery, 'game' | 'username'> = {}) =>
@@ -99,9 +134,15 @@ export function createAchievements(request: GameServiceRequest = requestGameServ
       request<AchievementUnlock | QueuedGameWrite>("achievements", { operation: "unlock", name }),
     clear: (name: string) =>
       request<{ success: true }>("achievements", { operation: "clear", name }),
+    async percentage(name: string, options: { game?: string } = {}) {
+      const result = await request<{ achievements: AchievementPercentage[] }>(
+        'achievements', { ...options, operation: 'percentages', name },
+      );
+      return result.achievements.find((achievement) => achievement.name === name) ?? null;
+    },
     percentages: (options: { game?: string; offset?: number } = {}) =>
       request<{
-        achievements: { name: string; percent: number; unlockedPlayers: number; unlocked: boolean }[];
+        achievements: AchievementPercentage[];
         nextOffset: number | null;
       }>("achievements", { ...options, operation: "percentages" }),
   });

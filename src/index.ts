@@ -12,6 +12,8 @@ import { achievements } from "./achievements.js";
 import { stats } from "./stats.js";
 import { chat } from './chat.js';
 import { offline } from './offline.js';
+import { invites } from './invites.js';
+export * from './invites.js';
 export * from './offline.js';
 export * from './chat.js';
 export * from "./achievements.js";
@@ -29,7 +31,7 @@ export type { AggregateAssetProgress, AssetProgress } from "./assets.js";
 export { get as getPlayer, player } from "./player.js";
 export type { Player } from "./player.js";
 export { get as getPresence, presence } from "./presence.js";
-export type { Presence, PresentFriend, PresentPlayer } from "./presence.js";
+export type { Presence, BackendPresence, PresentFriend, PresentPlayer } from "./presence.js";
 export {
   performanceMonitoring,
   report as reportPerformance,
@@ -72,5 +74,6 @@ export const Inkwell = Object.freeze({
   stats,
   chat,
   offline,
+  invites,
 });
 export default Inkwell;

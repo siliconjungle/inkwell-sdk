@@ -4,6 +4,64 @@ import { createAchievements, createServerAchievements, onAchievementNotification
 import { createStats, createServerStats } from "./stats.js";
 import type { GameServiceRequest } from "./game-services.js";
 
+test('individual achievement percentages select the requested name and preserve cross-game scope', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(_service: string, body: Record<string, unknown>) => {
+    calls.push(body);
+    return { achievements: [{ name: 'winner', percent: 25, unlockedPlayers: 1, unlocked: true }] } as T;
+  };
+  const api = createAchievements(request);
+  assert.equal((await api.percentage('winner', { game: 'other-game' }))?.percent, 25);
+  assert.equal(await api.percentage('secret'), null);
+  assert.deepEqual(calls[0], { operation: 'percentages', name: 'winner', game: 'other-game' });
+  assert.equal((await createServerAchievements(request).percentage('winner'))?.unlockedPlayers, 1);
+});
+
+test('stat schema is available without management methods in both SDK contexts', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body });
+    return { stats: [], nextOffset: null } as T;
+  };
+  const browser = createStats(request);
+  assert.equal('definitions' in browser, false);
+  assert.equal('define' in browser, false);
+  assert.deepEqual(await browser.schema({ name: 'coins', offset: 100 }), { stats: [], nextOffset: null });
+  await createServerStats(request).schema();
+  assert.deepEqual(calls, [
+    { service: 'stats', operation: 'schema', name: 'coins', offset: 100 },
+    { service: 'stats', operation: 'schema' },
+  ]);
+});
+
+test('aggregate queries preserve selected names and UTC dates in browser and backend requests', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { stats: [], nextOffset: null } as T;
+  };
+  const options = { names: ['coins'], startDate: '2024-02-28', endDate: '2024-03-01', offset: 0 };
+  await createStats(request).aggregate(options);
+  await createServerStats(request).aggregate(options);
+  assert.deepEqual(calls[0], { service: 'stats', operation: 'aggregate', ...options });
+  assert.deepEqual(calls[0], calls[1]);
+});
+
+test('mixed progress batches are backend-only and preserve a caller retry ID', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { stats: [], unlocked: [], cleared: [], duplicate: false } as T;
+  };
+  assert.equal('batchFor' in createStats(request), false);
+  const changes = { stats: [{ name: 'coins', value: 3 }], achievements: [{ name: 'winner', unlocked: true }] };
+  const api = createServerStats(request);
+  await api.batchFor('jungle', changes, { requestId: 'same-id', epoch: 4 });
+  await api.forPlayer('jungle').batch(changes, { requestId: 'same-id', epoch: 4 });
+  assert.deepEqual(calls[0], calls[1]);
+  assert.deepEqual(calls[0], { service: 'stats', ...changes, operation: 'batch', username: 'jungle', requestId: 'same-id', epoch: 4 });
+  await api.batchFor('jungle', changes);
+  assert.match(String(calls[2].requestId), /^[0-9a-f-]{36}$/);
+});
+
 test('achievement discovery/summary and direct stat reads preserve read selectors', async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {

@@ -1,5 +1,34 @@
 import { requestGameService, type GameServiceRequest } from "./game-services.js";
 import type { CachedGameRead, QueuedGameWrite } from './offline.js';
+import { parentOrigin } from './protocol.js';
+
+export type GameStatChange = {
+  id: string;
+  kind: 'updated' | 'reset' | 'refresh';
+  names: string[];
+};
+
+/** Browser invalidation hint, not a persisted value or a reliable event log. */
+export function onStatChange(listener: (change: GameStatChange) => void) {
+  const origin = parentOrigin();
+  if (typeof window === 'undefined' || !origin) return () => {};
+  const seen = new Set<string>();
+  const receive = (event: MessageEvent) => {
+    if (event.source !== window.parent || event.origin !== origin) return;
+    const message = event.data;
+    const change = message?.payload;
+    if (message?.source !== 'inkwell-platform' || message.version !== 1 || message.type !== 'stats.event' ||
+      !change || typeof change.id !== 'string' || !change.id || change.id.length > 100 ||
+      !['updated', 'reset', 'refresh'].includes(change.kind) ||
+      !Array.isArray(change.names) || change.names.length > 100 ||
+      !change.names.every((name: unknown) => typeof name === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(name)) || seen.has(change.id)) return;
+    seen.add(change.id);
+    if (seen.size > 100) seen.delete(seen.values().next().value!);
+    listener({ id: change.id, kind: change.kind, names: [...change.names] });
+  };
+  window.addEventListener('message', receive);
+  return () => window.removeEventListener('message', receive);
+}
 
 export type GameStatDefinition = {
   name: string;
@@ -22,8 +51,44 @@ export type GameStat = {
   value: number;
   updatedAt: string | null;
 };
+/** Read-only definition metadata. publicRead governs values, not this schema. */
+export type GameStatSchema = Required<Omit<GameStatDefinition, 'windowSeconds'>> & {
+  windowSeconds: number | null;
+};
 export type StatUpdate = { name: string; value: number; unlocked: string[]; queued?: false };
+export type AggregateGameStat = {
+  name: string;
+  /** Approximate JavaScript number. Use totalExact when precision matters. */
+  total: number;
+  /** Exact sum of recorded player contributions, capped per upload by maxChange. */
+  totalExact: string;
+  /** UTC days, today first, including days with no activity. */
+  history: {
+    day: string;
+    /** Approximate JavaScript number. */
+    delta: number;
+    /** Exact decimal change for this UTC day. */
+    deltaExact: string;
+  }[];
+};
+/** UTC date ranges are inclusive and at most60 days; omit history for totals only. */
+export type AggregateGameStatQuery = { names?: string[]; offset?: number } & (
+  { historyDays?: number; startDate?: never; endDate?: never } |
+  { startDate: string; endDate: string; historyDays?: never }
+);
 type RetryOptions = { requestId?: string };
+export type ProgressBatch = {
+  stats?: ({ name: string; value: number; mode?: 'set' | 'increment' } | { name: string; value: number; mode: 'average'; seconds: number })[];
+  achievements?: { name: string; unlocked: boolean }[];
+};
+export type ProgressBatchResult = {
+  stats: { name: string; value: number }[];
+  /** Newly unlocked names at the original commit; repeated receipts retain this list. */
+  unlocked: string[];
+  cleared: string[];
+  duplicate: boolean;
+};
+export type ProgressBatchOptions = RetryOptions & { epoch?: number };
 
 export function createStats(request: GameServiceRequest = requestGameService) {
   const write = (
@@ -48,6 +113,9 @@ export function createStats(request: GameServiceRequest = requestGameService) {
     });
   };
   return Object.freeze({
+    onChange: onStatChange,
+    schema: (options: { name?: string; offset?: number } = {}) =>
+      request<{ stats: GameStatSchema[]; nextOffset: number | null }>('stats', { ...options, operation: 'schema' }),
     async get(name: string, options: { username?: string } = {}) {
       const result = await request<{ stats: GameStat[] } & CachedGameRead>('stats', { ...options, operation: 'get', name });
       const stat = result.stats[0];
@@ -69,16 +137,19 @@ export function createStats(request: GameServiceRequest = requestGameService) {
       write(name, amount, "increment", options),
     updateAverage: (name: string, count: number, seconds: number, options?: RetryOptions) =>
       write(name, count, "average", options, seconds),
-    aggregate: (options: { historyDays?: number; offset?: number } = {}) =>
+    aggregate: (options: AggregateGameStatQuery = {}) =>
       request<{
-        stats: { name: string; total: number; history: { day: string; delta: number }[] }[];
+        stats: AggregateGameStat[];
         nextOffset: number | null;
       }>("stats", { ...options, operation: "aggregate" }),
   });
 }
 export function createServerStats(request: GameServiceRequest) {
+  const batchFor = (username: string, changes: ProgressBatch, options: ProgressBatchOptions = {}) =>
+    request<ProgressBatchResult>('stats', { ...changes, ...options, operation: 'batch', username, requestId: options.requestId ?? crypto.randomUUID() });
   return Object.freeze({
     ...createStats(request),
+    batchFor,
     definitions: (offset = 0) =>
       request<{ stats: GameStatDefinition[]; nextOffset: number | null }>("stats", { operation: "definitions", offset }),
     define: (definition: GameStatDefinition) =>
@@ -94,9 +165,10 @@ export function createServerStats(request: GameServiceRequest) {
         definition,
       }),
     forPlayer: (username: string) =>
-      createStats(<T>(service: string, body: Record<string, unknown>) =>
-        request<T>(service, { ...body, username }),
-      ),
+      Object.freeze({
+        ...createStats(<T>(service: string, body: Record<string, unknown>) => request<T>(service, { ...body, username })),
+        batch: (changes: ProgressBatch, options?: ProgressBatchOptions) => batchFor(username, changes, options),
+      }),
   });
 }
 export const stats = createStats();

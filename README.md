@@ -155,13 +155,77 @@ scanning pages. Linked private stat values are not exposed through achievements
 to other players or other games; mark the stat `publicRead` to share that progress.
 Unlock status/dates remain available through permitted cross-game reads.
 
+`achievements.percentage(name, { game? })` directly reads one achievement's
+completion percentage, signed-in player count and current-player unlock flag.
+It returns `null` for unavailable or still-hidden achievements. Use
+`achievements.percentages({ game?, offset? })` for the paginated ranking.
+
 Stats support integer/fractional/average values, bounds, increment-only writes,
 maximum changes, backend-only authority, and aggregated totals/daily history.
 Linked achievements unlock in the same transaction as a successful stat update.
+Browser games can subscribe to backend-driven changes:
+
+```js
+const stop = Inkwell.stats.onChange(({ kind, names }) => {
+  // Re-read the relevant stats and redraw your UI.
+  // kind: 'updated', 'reset', or 'refresh'; names is empty for reset/refresh.
+})
+// Call stop() when your screen or game tears down.
+```
+
+These are best-effort invalidation hints, not values or a durable event log.
+Read initial state when starting; re-read on `refresh` after the account socket
+connects/reconnects. Backend writes/resets notify only the affected account's
+current game frame, never other games or DMs. The host invalidates cached stats
+and linked achievement reads before forwarding the hint. Pending offline writes
+remain queued and retain reset-epoch protection. Notification delivery failure
+does not undo a committed write. `onChange` is browser-only (a no-op on a backend).
+
 Repeated unlocks preserve the original date; repeated stat request IDs cannot
 double-count. Await writes for persistence (or an explicit queued receipt when
 offline support is enabled). `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
+
+`stats.aggregate({ historyDays: 7 })` returns up to 100 aggregated stats per page
+(`nextOffset` for continuation). Each has `totalExact`, a decimal string summing
+recorded player contributions without losing digits when totals exceed JavaScript's
+safe-integer range. `total` remains an approximate number for convenience.
+History accepts 0–60 UTC days, today first, including zero-activity days; each
+entry has `day`, approximate `delta`, and decimal-string `deltaExact`.
+Use `BigInt(totalExact)` for integer stats, or a decimal library for fractional
+stats; converting the string back to `Number` can lose precision. This preserves
+aggregate precision, not precision already lost in individual floating-point
+game values. History measures daily net changes, including resets, not snapshots
+of each day's total. Omitting both `historyDays` and a date range returns no history.
+
+To select particular stats or older history, use the same query in a browser,
+external backend SDK, or hosted backend context:
+
+```ts
+const result = await Inkwell.stats.aggregate({
+  names: ['coins', 'levels_completed'],
+  startDate: '2024-02-28',
+  endDate: '2024-03-01',
+});
+```
+
+`names` accepts 1–100 names, removes duplicates, and filters before pagination;
+unknown or non-aggregated names are omitted. Results stay name-sorted, not in
+requested-name order. Both dates are canonical UTC `YYYY-MM-DD` dates, inclusive,
+with a maximum span of 60 days. Use either a date range or `historyDays`, not both.
+Range history is newest first with zero-filled missing days. The range only
+selects history: `totalExact` still represents the current lifetime contribution
+total, not the sum over that range. These queries remain current-game scoped.
+
+For aggregated stats, `maxChange` caps each upload's signed contribution to the
+global total; the player's value still saves if it satisfies the other bounds.
+For example, starting at a default of 1000 and uploading 1002 with `maxChange: 5`
+saves 1002 for the player but contributes only 5 globally. Subsequent uploads
+contribute their raw change, capped in either direction; repeating a value adds
+nothing. Without aggregation, `maxChange` instead rejects excessive player-value
+changes. Reset removes that player's recorded contribution in full (an explicit
+correction, not another capped upload). Historic totals from before contribution
+accounting are preserved, with caps applied to subsequent changes.
 
 ### Leaderboard discovery and dynamic creation
 
@@ -189,7 +253,7 @@ The entry count is a total, not a list of private player identities.
 import { offline } from '@silicon-jungle/inkwell-sdk/offline'
 await offline.enable() // Online, signed-in session required first.
 const result = await stats.increment('coins', 1)
-if (result.queued) showPendingSave() // On this device, not yet server-confirmed.
+if (result.queued) showPendingStatUpdate() // On this device, not yet server-confirmed.
 const { pending, failures } = await offline.status()
 await offline.flush() // Reconnect also triggers automatic retries.
 ```
@@ -200,12 +264,81 @@ so a new immutable build origin does not lose them. Enable again each play
 session. Own-player reads may use cached responses tagged `offline`, `cachedAt`
 and `pendingWrites`; they do not optimistically include pending mutations.
 Cross-game/other-player reads, clears, resets and backend operations are never
-queued. Resets invalidate older pending writes. Failed/expired saves appear in
+queued. Resets invalidate older pending writes. Failed/expired submissions appear in
 `status().failures`; no synthetic unlock is reported before server acceptance.
 Limits: 1,000 writes / 512,000 serialized characters per game/player, seven-day
-expiry, 50 recent failure records. Clearing browser data removes pending saves.
+expiry, 50 recent failure records. Clearing browser data removes pending submissions.
 `disable()` stops queueing/retries without deleting pending data. This module
 does not cache game assets or make a fresh offline login possible.
+
+Game saves and conflict resolution belong to the creator. This module is only
+an opt-in retry queue for explicit stat writes and achievement unlocks, not a
+game-save system or a “most progress wins” merger. `set` overwrites the current
+value when accepted; `increment` applies a delta once per retry ID. Two devices
+submitting independent deltas contribute both; two absolute sets retain normal
+write ordering, subject to the stat's bounds and increment-only restrictions.
+Creators choose what to submit and how to reconcile their own game state.
+
+### Atomic backend progress batches
+
+```ts
+const requestId = crypto.randomUUID() // retain this ID if retrying this operation
+const result = await context.stats.batchFor('jungle', {
+  stats: [
+    { name: 'coins', mode: 'increment', value: 3 },
+    { name: 'accuracy', mode: 'average', value: 12, seconds: 2 },
+  ],
+  achievements: [{ name: 'first-win', unlocked: true }],
+}, { requestId })
+// { stats: [{ name, value }], unlocked: ['first-win', ...], cleared: [], duplicate: false }
+```
+
+Also available as `context.stats.forPlayer(username).batch(changes, options)`
+and on external runtime services. This method is backend-only; it does not
+expose arbitrary-player writes to embedded games. The normal game-scoped runtime
+credential selects the game. There are no cross-game writes.
+
+A batch accepts1–100 changes total within the16KiB API body limit. Each stat
+and each achievement may appear only once; array order has no effect. Stat mode
+defaults to `set`; `increment` and `average` use the same validation, averaging
+and aggregate-contribution rules as individual writes. Achievement entries
+require an explicit boolean `unlocked`. Setting it to false clears the award,
+even when a stat in this batch would otherwise auto-unlock it. Clearing advances
+the player's save epoch once for the entire batch, invalidating older queued saves.
+
+All entries are validated and committed in one database transaction: a missing
+definition, invalid value or SQL failure cannot leave siblings partially applied.
+Use the same `requestId` and changes on retry. Reordered identical changes are
+accepted; reusing the ID for different changes returns409. A successful retry
+returns the original saved result with `duplicate: true` and does not reapply
+increments, repeat clears or send new award notices. The original result is a
+receipt, not a read of the player's current state (including after a reset).
+An optional `epoch` rejects stale-generation writes; omitting it targets current
+backend state. Already-committed receipts remain retrievable after an epoch change;
+that retrieval never writes again. Query after reconnect; change/award notifications remain best-effort.
+The browser offline queue does not queue backend batches.
+
+### Read-only stat schema
+
+```ts
+const page = await Inkwell.stats.schema() // { stats, nextOffset }
+const coins = await Inkwell.stats.schema({ name: 'coins' })
+// Fetch subsequent pages with { offset: page.nextOffset } until null.
+```
+
+This returns complete stat definition metadata: name/title, numeric kind, default,
+bounds, maxChange, increment-only/server-write/public-read flags, aggregation and
+AVGRATE window. It never returns saved player values, internal IDs, or management
+permissions. Schema is readable by guests with a valid game session;
+`publicRead` controls other players' **values**, not definition metadata.
+The response is name-sorted,100 per page, and an optional exact name filter is
+applied before pagination. Missing names return an empty page. It is always
+current-game scoped and is not cached by the optional offline module.
+
+Backends expose the same `context.stats.schema()` and runtime-services method.
+For achievement metadata, use `achievements.list({ game?, locale?, offset? })`;
+locked hidden achievements retain their existing redaction. Creator-only
+`stats.definitions()` and mutation methods remain separate.
 
 ### Progress notifications
 Achievement progress can also be shown without persisting it:
@@ -223,6 +356,41 @@ appear in the platform player header, not over the game. Backend code can use
 `context.achievements.indicateProgressFor(username, name, current, max)`.
 Notifications are best-effort; query saved state after reconnecting. Call
 `unsubscribe()` when your UI is disposed.
+
+Subscribe separately when your UI needs to re-read saved achievement state:
+
+```ts
+const stopChanges = achievements.onChange(({ kind, names }) => {
+  // 'updated': named backend unlock/clear; 'reset': player stats reset;
+  // 'refresh': reconnect or a stat change that may affect achievement progress.
+  void refreshAchievementUI()
+})
+```
+
+These are best-effort hints for the current game/player, not authoritative
+values or a durable event log. The host invalidates its offline read cache
+before delivering a hint, while preserving pending writes. Empty `names` means
+re-read the relevant achievement list. Register before loading your initial
+state and query again after reconnect; missed hints do not undo committed
+awards. This subscription is browser-only (a no-op on a backend). Call
+`stopChanges()` when disposing the UI. Cross-game reads do not subscribe to
+other games' updates.
+
+## Backend game presence
+
+In a hosted backend, `await context.presence.get()` returns
+`{ total, guestCount, players }`. The same method is available on
+`createRuntimeServices().presence` for external game backends. It reads the
+current game's live platform presence room, not just connections to one backend
+process. Duplicate connections for the same game-scoped player count once.
+
+`players` contains at most50 public profiles (`playerId`, `username`,
+`displayName`, `avatarUrl`, `isGuest`); `total` still counts the whole room.
+Expired/revoked sessions are excluded. There is no game selector, account ID,
+email or viewer-specific friend list. Failed/malformed presence HTTP responses
+reject rather than pretending the game has zero players. Sessions whose access
+cannot be revalidated are excluded (fail closed). This is an on-demand snapshot, not
+a recommendation to poll; use it when game logic needs the current roster.
 
 ## Game chat (optional module)
 
@@ -246,6 +414,19 @@ are game-controlled, not verified human identities. Routing IDs come from
 stay within this game and are also readable by its backend. Named channels are
 joinable by players of the game, not private rooms merely because their names
 are hard to guess. This API provides no platform DMs or account messaging.
+
+Account blocks apply in either direction to live delivery and history using the
+authenticated transport `senderId`, never the game's displayed `author` fields.
+Backend messages use the backend sender identity: relayed player text remains
+creator-controlled content. Guests have no account block list. This is access
+filtering, not a claim of verified human authorship inside games.
+
+`onModeration` also receives `chat.visibility` with checked `senderIds` and their
+`blockedSenderIds`. The SDK removes hidden senders from `connection.messages`;
+refresh your rendered list on that event. Checks happen on delivery/history,
+reconnect and periodic idle sweeps. Unblocking permits future messages and
+history; use `connection.history(0)` to reload older messages. Previously copied
+game-owned UI/data cannot be remotely erased.
 
 Hosted backend `context.chat` supports `list`, `define`, and `channel(name)` with
 `send`, `history`, `remove`, `clear`, and `delete`. To subscribe from a backend,
