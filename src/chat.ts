@@ -89,6 +89,12 @@ export class ChatConnection {
       if (this.stopped || generation !== this.generation) return;
       const url = new URL(ticket.url);
       if (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new GameServiceError('Chat requires a secure WebSocket.', 400);
+      if (this.currentPlayerId && this.currentPlayerId !== ticket.playerId) {
+        this.retained.clear(); this.buffered = []; this.removedIds.clear(); this.cursor = 0; this.clearedThrough = 0;
+        this.currentPlayerId = '';
+        notify(this.moderationListeners, { type: 'chat.cleared', channel: this.channel });
+        throw new GameServiceError('The active player changed. Open a new chat connection.', 403, 'player_changed');
+      }
       this.currentPlayerId = ticket.playerId;
       this.syncing = true;
       this.buffered = [];

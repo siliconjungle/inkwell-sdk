@@ -94,3 +94,23 @@ void test('backend chat exposes scoped management and targeted sends without acc
   assert.throws(() => chat.channel('../user:someone'), /Invalid/);
   assert.equal('dm' in chat, false);
 });
+
+void test('identity change during renewal clears private history and fails closed', async () => {
+  let ticketCount = 0;
+  let socket!: FakeSocket;
+  const request: GameServiceRequest = async <T>() => ({ url: 'wss://realtime.inkwell.ing/connect', playerId: ++ticketCount === 1 ? 'alice' : 'bob', channel: 'game', expiresAt: Date.now() + 300000 }) as T;
+  const notices: string[] = [];
+  const connection = await createChat(request, () => { socket = new FakeSocket([{ ...message(1), body: 'Alice private', recipients: ['alice'] }]); return socket as unknown as WebSocket; }).connect('game', { onModeration: event => notices.push(event.type) });
+  try {
+    assert.ok(connection.messages.some(message => message.body === 'Alice private'));
+    const closed = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Identity change did not close chat')), 4000);
+      connection.onState(state => { if (state === 'closed') { clearTimeout(timer); resolve(); } });
+    });
+    socket.close(4001);
+    await closed;
+    assert.equal(connection.playerId, '');
+    assert.deepEqual(connection.messages, []);
+    assert.deepEqual(notices, ['chat.cleared']);
+  } finally { connection.close(); }
+});
