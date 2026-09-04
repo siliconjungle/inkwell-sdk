@@ -34,6 +34,22 @@ test('stat schema is available without management methods in both SDK contexts',
   ]);
 });
 
+test('mixed progress batches are backend-only and preserve a caller retry ID', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { stats: [], unlocked: [], cleared: [], duplicate: false } as T;
+  };
+  assert.equal('batchFor' in createStats(request), false);
+  const changes = { stats: [{ name: 'coins', value: 3 }], achievements: [{ name: 'winner', unlocked: true }] };
+  const api = createServerStats(request);
+  await api.batchFor('jungle', changes, { requestId: 'same-id', epoch: 4 });
+  await api.forPlayer('jungle').batch(changes, { requestId: 'same-id', epoch: 4 });
+  assert.deepEqual(calls[0], calls[1]);
+  assert.deepEqual(calls[0], { service: 'stats', ...changes, operation: 'batch', username: 'jungle', requestId: 'same-id', epoch: 4 });
+  await api.batchFor('jungle', changes);
+  assert.match(String(calls[2].requestId), /^[0-9a-f-]{36}$/);
+});
+
 test('achievement discovery/summary and direct stat reads preserve read selectors', async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {

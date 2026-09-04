@@ -72,6 +72,18 @@ export type AggregateGameStat = {
   }[];
 };
 type RetryOptions = { requestId?: string };
+export type ProgressBatch = {
+  stats?: ({ name: string; value: number; mode?: 'set' | 'increment' } | { name: string; value: number; mode: 'average'; seconds: number })[];
+  achievements?: { name: string; unlocked: boolean }[];
+};
+export type ProgressBatchResult = {
+  stats: { name: string; value: number }[];
+  /** Newly unlocked names at the original commit; repeated receipts retain this list. */
+  unlocked: string[];
+  cleared: string[];
+  duplicate: boolean;
+};
+export type ProgressBatchOptions = RetryOptions & { epoch?: number };
 
 export function createStats(request: GameServiceRequest = requestGameService) {
   const write = (
@@ -128,8 +140,11 @@ export function createStats(request: GameServiceRequest = requestGameService) {
   });
 }
 export function createServerStats(request: GameServiceRequest) {
+  const batchFor = (username: string, changes: ProgressBatch, options: ProgressBatchOptions = {}) =>
+    request<ProgressBatchResult>('stats', { ...changes, ...options, operation: 'batch', username, requestId: options.requestId ?? crypto.randomUUID() });
   return Object.freeze({
     ...createStats(request),
+    batchFor,
     definitions: (offset = 0) =>
       request<{ stats: GameStatDefinition[]; nextOffset: number | null }>("stats", { operation: "definitions", offset }),
     define: (definition: GameStatDefinition) =>
@@ -145,9 +160,10 @@ export function createServerStats(request: GameServiceRequest) {
         definition,
       }),
     forPlayer: (username: string) =>
-      createStats(<T>(service: string, body: Record<string, unknown>) =>
-        request<T>(service, { ...body, username }),
-      ),
+      Object.freeze({
+        ...createStats(<T>(service: string, body: Record<string, unknown>) => request<T>(service, { ...body, username })),
+        batch: (changes: ProgressBatch, options?: ProgressBatchOptions) => batchFor(username, changes, options),
+      }),
   });
 }
 export const stats = createStats();

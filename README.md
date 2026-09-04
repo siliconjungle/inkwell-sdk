@@ -252,6 +252,45 @@ expiry, 50 recent failure records. Clearing browser data removes pending saves.
 `disable()` stops queueing/retries without deleting pending data. This module
 does not cache game assets or make a fresh offline login possible.
 
+### Atomic backend progress batches
+
+```ts
+const requestId = crypto.randomUUID() // retain this ID if retrying this operation
+const result = await context.stats.batchFor('jungle', {
+  stats: [
+    { name: 'coins', mode: 'increment', value: 3 },
+    { name: 'accuracy', mode: 'average', value: 12, seconds: 2 },
+  ],
+  achievements: [{ name: 'first-win', unlocked: true }],
+}, { requestId })
+// { stats: [{ name, value }], unlocked: ['first-win', ...], cleared: [], duplicate: false }
+```
+
+Also available as `context.stats.forPlayer(username).batch(changes, options)`
+and on external runtime services. This method is backend-only; it does not
+expose arbitrary-player writes to embedded games. The normal game-scoped runtime
+credential selects the game. There are no cross-game writes.
+
+A batch accepts1–100 changes total within the16KiB API body limit. Each stat
+and each achievement may appear only once; array order has no effect. Stat mode
+defaults to `set`; `increment` and `average` use the same validation, averaging
+and aggregate-contribution rules as individual writes. Achievement entries
+require an explicit boolean `unlocked`. Setting it to false clears the award,
+even when a stat in this batch would otherwise auto-unlock it. Clearing advances
+the player's save epoch once for the entire batch, invalidating older queued saves.
+
+All entries are validated and committed in one database transaction: a missing
+definition, invalid value or SQL failure cannot leave siblings partially applied.
+Use the same `requestId` and changes on retry. Reordered identical changes are
+accepted; reusing the ID for different changes returns409. A successful retry
+returns the original saved result with `duplicate: true` and does not reapply
+increments, repeat clears or send new award notices. The original result is a
+receipt, not a read of the player's current state (including after a reset).
+An optional `epoch` rejects stale-generation writes; omitting it targets current
+backend state. Already-committed receipts remain retrievable after an epoch change;
+that retrieval never writes again. Query after reconnect; change/award notifications remain best-effort.
+The browser offline queue does not queue backend batches.
+
 ### Read-only stat schema
 
 ```ts
