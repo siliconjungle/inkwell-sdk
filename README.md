@@ -154,6 +154,39 @@ double-count. Await writes for persistence; automatic offline queuing is still
 pending. `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
 
+## Game chat (optional module)
+
+```ts
+import { chat } from '@silicon-jungle/inkwell-sdk/chat'
+
+const channel = await chat.connect('game', {
+  onMessage: message => renderMessage(message),
+  onModeration: event => removeOrClearMessages(event),
+})
+await channel.send('Hello!', { author: { displayName: 'My character' } })
+await channel.send('Party ready.', { recipients: [otherPlayerId] })
+channel.close()
+```
+
+The SDK renews channel access and reconnects with history catch-up automatically.
+Use a stable `id` in send options when retrying a failed send. Displayed authors
+are game-controlled, not verified human identities. Routing IDs come from
+`channel.playerId` or backend `connection.identity.playerId`; directed messages
+stay within this game and are also readable by its backend. Named channels are
+joinable by players of the game, not private rooms merely because their names
+are hard to guess. This API provides no platform DMs or account messaging.
+
+Hosted backend `context.chat` supports `list`, `define`, and `channel(name)` with
+`send`, `history`, `remove`, `clear`, and `delete`. To subscribe from a backend,
+use `createRuntimeServices().chat.connect(name)` from the `/storage` module.
+
+Per game: 128 channels, 1,000 retained messages/removal markers, 24-hour history,
+500 concurrent sockets. Per player/backend: four sockets. Messages allow 2,000
+characters and 32 recipients. Player sends are limited to 20/minute across
+channels; backend sends to 240/minute. History pages have at most 100 messages.
+Removed messages cannot be resurrected by retrying the same ID while their
+removal marker is retained. See [game chat documentation](https://inkwell.ing/docs/chat).
+
 ## Development
 
 ```bash

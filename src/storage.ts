@@ -291,6 +291,8 @@ export class InkwellObjectStorage {
   }
 }
 
+import { createServerChat } from './chat.js';
+
 export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {}) {
   const baseUrl = options.baseUrl ?? process.env.INKWELL_RUNTIME_API_URL;
   const token = options.token ?? process.env.INKWELL_RUNTIME_TOKEN;
@@ -307,6 +309,7 @@ export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {
   });
   return Object.freeze({
     database: new InkwellDatabase(client),
+    chat: createServerChat(createGameServiceRequest({ baseUrl, token, fetch: options.fetch })),
     achievements: createServerAchievements(
       createGameServiceRequest({ baseUrl, token, fetch: options.fetch }),
     ),

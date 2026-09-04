@@ -9,6 +9,8 @@ import { backend, connectBackend, requestBackend } from "./backend.js";
 import { leaderboards } from "./leaderboards.js";
 import { achievements } from "./achievements.js";
 import { stats } from "./stats.js";
+import { chat } from './chat.js';
+export * from './chat.js';
 export * from "./achievements.js";
 export * from "./stats.js";
 export * from "./leaderboards.js";
@@ -63,5 +65,6 @@ export const Inkwell = Object.freeze({
   leaderboards,
   achievements,
   stats,
+  chat,
 });
 export default Inkwell;
