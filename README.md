@@ -150,9 +150,33 @@ Stats support integer/fractional/average values, bounds, increment-only writes,
 maximum changes, backend-only authority, and aggregated totals/daily history.
 Linked achievements unlock in the same transaction as a successful stat update.
 Repeated unlocks preserve the original date; repeated stat request IDs cannot
-double-count. Await writes for persistence; automatic offline queuing is still
-pending. `achievements.clear(name)` and `stats.reset({ achievements: true })`
+double-count. Await writes for persistence (or an explicit queued receipt when
+offline support is enabled). `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
+
+### Optional offline progress
+
+```ts
+import { offline } from '@silicon-jungle/inkwell-sdk/offline'
+await offline.enable() // Online, signed-in session required first.
+const result = await stats.increment('coins', 1)
+if (result.queued) showPendingSave() // On this device, not yet server-confirmed.
+const { pending, failures } = await offline.status()
+await offline.flush() // Reconnect also triggers automatic retries.
+```
+
+`Inkwell.offline` exposes the same controls. The platform parent stores queued
+stat writes and achievement unlocks in IndexedDB, partitioned by game/player,
+so a new immutable build origin does not lose them. Enable again each play
+session. Own-player reads may use cached responses tagged `offline`, `cachedAt`
+and `pendingWrites`; they do not optimistically include pending mutations.
+Cross-game/other-player reads, clears, resets and backend operations are never
+queued. Resets invalidate older pending writes. Failed/expired saves appear in
+`status().failures`; no synthetic unlock is reported before server acceptance.
+Limits: 1,000 writes / 512,000 serialized characters per game/player, seven-day
+expiry, 50 recent failure records. Clearing browser data removes pending saves.
+`disable()` stops queueing/retries without deleting pending data. This module
+does not cache game assets or make a fresh offline login possible.
 
 ### Progress notifications
 Achievement progress can also be shown without persisting it:

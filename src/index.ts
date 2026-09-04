@@ -10,6 +10,8 @@ import { leaderboards } from "./leaderboards.js";
 import { achievements } from "./achievements.js";
 import { stats } from "./stats.js";
 import { chat } from './chat.js';
+import { offline } from './offline.js';
+export * from './offline.js';
 export * from './chat.js';
 export * from "./achievements.js";
 export * from "./stats.js";
@@ -66,5 +68,6 @@ export const Inkwell = Object.freeze({
   achievements,
   stats,
   chat,
+  offline,
 });
 export default Inkwell;

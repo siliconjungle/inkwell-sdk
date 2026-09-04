@@ -24,6 +24,7 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
+    "./offline": { "types": "./dist/offline.d.ts", "import": "./dist/offline.js" },
     "./chat": { "types": "./dist/chat.d.ts", "import": "./dist/chat.js" },
     "./achievements": { "types": "./dist/achievements.d.ts", "import": "./dist/achievements.js" },
     "./stats": { "types": "./dist/stats.d.ts", "import": "./dist/stats.js" },

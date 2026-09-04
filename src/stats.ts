@@ -1,4 +1,5 @@
 import { requestGameService, type GameServiceRequest } from "./game-services.js";
+import type { CachedGameRead, QueuedGameWrite } from './offline.js';
 
 export type GameStatDefinition = {
   name: string;
@@ -21,7 +22,7 @@ export type GameStat = {
   value: number;
   updatedAt: string | null;
 };
-export type StatUpdate = { name: string; value: number; unlocked: string[] };
+export type StatUpdate = { name: string; value: number; unlocked: string[]; queued?: false };
 type RetryOptions = { requestId?: string };
 
 export function createStats(request: GameServiceRequest = requestGameService) {
@@ -37,7 +38,7 @@ export function createStats(request: GameServiceRequest = requestGameService) {
       (mode === "average" && (!Number.isFinite(seconds) || seconds! <= 0))
     )
       throw new TypeError("Stat updates require finite values and positive durations.");
-    return request<StatUpdate>("stats", {
+    return request<StatUpdate | QueuedGameWrite>("stats", {
       operation: "write",
       name,
       mode,
@@ -53,7 +54,7 @@ export function createStats(request: GameServiceRequest = requestGameService) {
         operation: "reset",
       }),
     list: (options: { username?: string; offset?: number } = {}) =>
-      request<{ stats: GameStat[]; nextOffset: number | null }>("stats", {
+      request<{ stats: GameStat[]; nextOffset: number | null } & CachedGameRead>("stats", {
         ...options,
         operation: "list",
       }),
