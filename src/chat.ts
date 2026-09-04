@@ -8,9 +8,9 @@ export type ChatMessage = {
 };
 export type ChatSendOptions = { id?: string; author?: ChatAuthor; recipients?: string[] };
 export type ChatReceipt = { message: ChatMessage; duplicate: boolean };
-export type ChatHistory = { messages: ChatMessage[]; nextCursor: number; hasMore: boolean; retentionHours: number; removedIds: string[]; retainedFrom: number };
+export type ChatHistory = { messages: ChatMessage[]; nextCursor: number; hasMore: boolean; retentionHours: number; removedIds: string[]; retainedFrom: number; senderIds?: string[]; blockedSenderIds?: string[] };
 export type ChatState = 'connecting' | 'connected' | 'reconnecting' | 'closed';
-export type ChatModerationEvent = { type: 'chat.removed' | 'chat.cleared' | 'chat.channel-deleted'; channel: string; id?: string; throughSequence?: number };
+export type ChatModerationEvent = { type: 'chat.removed' | 'chat.cleared' | 'chat.channel-deleted' | 'chat.visibility'; channel: string; id?: string; throughSequence?: number; senderIds?: string[]; blockedSenderIds?: string[] };
 type Ticket = { url: string; playerId: string; channel: string; expiresAt: number };
 type SocketFactory = (url: string) => WebSocket;
 export type ChatConnectOptions = {
@@ -38,6 +38,8 @@ export class ChatConnection {
   private buffered: ChatMessage[] = [];
   private retained = new Map<string, ChatMessage>();
   private removedIds = new Set<string>();
+  private blockedSenders = new Set<string>();
+  private visibilityVersion = 0;
   private clearedThrough = 0;
   private pending = new Map<string, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
   private messageListeners = new Set<(message: ChatMessage) => void>();
@@ -75,11 +77,21 @@ export class ChatConnection {
   onModeration(listener: (event: ChatModerationEvent) => void) { this.moderationListeners.add(listener); return () => { this.moderationListeners.delete(listener); }; }
   private setState(state: ChatState) { this.currentState = state; notify(this.stateListeners, state); }
   private receiveMessage(message: ChatMessage) {
-    if (message.channel !== this.channel || this.retained.has(message.id) || this.removedIds.has(message.id) || message.sequence <= this.clearedThrough) return;
+    if (message.channel !== this.channel || this.blockedSenders.has(message.senderId) || this.retained.has(message.id) || this.removedIds.has(message.id) || message.sequence <= this.clearedThrough) return;
     this.retained.set(message.id, message);
     if (this.retained.size > 1000) this.retained.delete(this.retained.keys().next().value!);
     this.cursor = Math.max(this.cursor, message.sequence);
     notify(this.messageListeners, message);
+  }
+  private updateVisibility(senderIds: string[], blockedSenderIds: string[]) {
+    if (!Array.isArray(senderIds) || senderIds.length > 1000 || senderIds.some(id => typeof id !== 'string') || !Array.isArray(blockedSenderIds) || blockedSenderIds.some(id => !senderIds.includes(id))) throw new Error('Invalid chat visibility.');
+    ++this.visibilityVersion;
+    for (const id of senderIds) this.blockedSenders.delete(id);
+    for (const id of blockedSenderIds) this.blockedSenders.add(id);
+    while (this.blockedSenders.size > 1000) this.blockedSenders.delete(this.blockedSenders.keys().next().value!);
+    for (const [id, message] of this.retained) if (this.blockedSenders.has(message.senderId)) this.retained.delete(id);
+    this.buffered = this.buffered.filter(message => !this.blockedSenders.has(message.senderId));
+    notify(this.moderationListeners, { type: 'chat.visibility', channel: this.channel, senderIds, blockedSenderIds });
   }
   private async open() {
     const generation = ++this.generation;
@@ -90,7 +102,7 @@ export class ChatConnection {
       const url = new URL(ticket.url);
       if (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && ['localhost', '127.0.0.1'].includes(url.hostname))) throw new GameServiceError('Chat requires a secure WebSocket.', 400);
       if (this.currentPlayerId && this.currentPlayerId !== ticket.playerId) {
-        this.retained.clear(); this.buffered = []; this.removedIds.clear(); this.cursor = 0; this.clearedThrough = 0;
+        this.retained.clear(); this.buffered = []; this.removedIds.clear(); this.blockedSenders.clear(); this.cursor = 0; this.clearedThrough = 0;
         this.currentPlayerId = '';
         notify(this.moderationListeners, { type: 'chat.cleared', channel: this.channel });
         throw new GameServiceError('The active player changed. Open a new chat connection.', 403, 'player_changed');
@@ -116,6 +128,8 @@ export class ChatConnection {
             this.renewalTimer = setTimeout(() => socket.close(4001, 'Renewing chat access.'), Math.max(1000, ticket.expiresAt - Date.now() - 5000));
             this.pingTimer = setInterval(() => { if (socket.readyState === 1) socket.send('ping'); }, 30000);
             void this.catchUp(generation).catch(() => socket.close());
+          } else if (message.type === 'chat.visibility' && message.channel === this.channel) {
+            this.updateVisibility(message.senderIds, message.blockedSenderIds);
           } else if (message.type === 'chat.message' && message.message) {
             if (this.syncing) {
               if (this.buffered.length >= 1000) socket.close(1008, 'Chat catch-up buffer full.');
@@ -153,8 +167,10 @@ export class ChatConnection {
   private async catchUp(generation: number) {
     let hasMore = true;
     while (hasMore && !this.stopped && generation === this.generation) {
+      const visibilityVersion = this.visibilityVersion;
       const page = await this.command<ChatHistory>({ operation: 'history', after: this.cursor });
       if (this.stopped || generation !== this.generation) return;
+      if (visibilityVersion === this.visibilityVersion && page.senderIds && page.blockedSenderIds) this.updateVisibility(page.senderIds, page.blockedSenderIds);
       for (const id of page.removedIds ?? []) this.rememberRemoved(id);
       for (const [id, message] of this.retained) {
         if (this.removedIds.has(id) || message.sequence < page.retainedFrom) {

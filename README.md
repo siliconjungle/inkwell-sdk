@@ -259,6 +259,19 @@ stay within this game and are also readable by its backend. Named channels are
 joinable by players of the game, not private rooms merely because their names
 are hard to guess. This API provides no platform DMs or account messaging.
 
+Account blocks apply in either direction to live delivery and history using the
+authenticated transport `senderId`, never the game's displayed `author` fields.
+Backend messages use the backend sender identity: relayed player text remains
+creator-controlled content. Guests have no account block list. This is access
+filtering, not a claim of verified human authorship inside games.
+
+`onModeration` also receives `chat.visibility` with checked `senderIds` and their
+`blockedSenderIds`. The SDK removes hidden senders from `connection.messages`;
+refresh your rendered list on that event. Checks happen on delivery/history,
+reconnect and periodic idle sweeps. Unblocking permits future messages and
+history; use `connection.history(0)` to reload older messages. Previously copied
+game-owned UI/data cannot be remotely erased.
+
 Hosted backend `context.chat` supports `list`, `define`, and `channel(name)` with
 `send`, `history`, `remove`, `clear`, and `delete`. To subscribe from a backend,
 use `createRuntimeServices().chat.connect(name)` from the `/storage` module.
