@@ -196,7 +196,26 @@ Use `BigInt(totalExact)` for integer stats, or a decimal library for fractional
 stats; converting the string back to `Number` can lose precision. This preserves
 aggregate precision, not precision already lost in individual floating-point
 game values. History measures daily net changes, including resets, not snapshots
-of each day's total. Omitting `historyDays` returns no history.
+of each day's total. Omitting both `historyDays` and a date range returns no history.
+
+To select particular stats or older history, use the same query in a browser,
+external backend SDK, or hosted backend context:
+
+```ts
+const result = await Inkwell.stats.aggregate({
+  names: ['coins', 'levels_completed'],
+  startDate: '2024-02-28',
+  endDate: '2024-03-01',
+});
+```
+
+`names` accepts 1–100 names, removes duplicates, and filters before pagination;
+unknown or non-aggregated names are omitted. Results stay name-sorted, not in
+requested-name order. Both dates are canonical UTC `YYYY-MM-DD` dates, inclusive,
+with a maximum span of 60 days. Use either a date range or `historyDays`, not both.
+Range history is newest first with zero-filled missing days. The range only
+selects history: `totalExact` still represents the current lifetime contribution
+total, not the sum over that range. These queries remain current-game scoped.
 
 For aggregated stats, `maxChange` caps each upload's signed contribution to the
 global total; the player's value still saves if it satisfies the other bounds.

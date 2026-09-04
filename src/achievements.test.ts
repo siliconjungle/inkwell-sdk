@@ -34,6 +34,18 @@ test('stat schema is available without management methods in both SDK contexts',
   ]);
 });
 
+test('aggregate queries preserve selected names and UTC dates in browser and backend requests', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { stats: [], nextOffset: null } as T;
+  };
+  const options = { names: ['coins'], startDate: '2024-02-28', endDate: '2024-03-01', offset: 0 };
+  await createStats(request).aggregate(options);
+  await createServerStats(request).aggregate(options);
+  assert.deepEqual(calls[0], { service: 'stats', operation: 'aggregate', ...options });
+  assert.deepEqual(calls[0], calls[1]);
+});
+
 test('mixed progress batches are backend-only and preserve a caller retry ID', async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {

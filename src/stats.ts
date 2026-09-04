@@ -71,6 +71,11 @@ export type AggregateGameStat = {
     deltaExact: string;
   }[];
 };
+/** UTC date ranges are inclusive and at most60 days; omit history for totals only. */
+export type AggregateGameStatQuery = { names?: string[]; offset?: number } & (
+  { historyDays?: number; startDate?: never; endDate?: never } |
+  { startDate: string; endDate: string; historyDays?: never }
+);
 type RetryOptions = { requestId?: string };
 export type ProgressBatch = {
   stats?: ({ name: string; value: number; mode?: 'set' | 'increment' } | { name: string; value: number; mode: 'average'; seconds: number })[];
@@ -132,7 +137,7 @@ export function createStats(request: GameServiceRequest = requestGameService) {
       write(name, amount, "increment", options),
     updateAverage: (name: string, count: number, seconds: number, options?: RetryOptions) =>
       write(name, count, "average", options, seconds),
-    aggregate: (options: { historyDays?: number; offset?: number } = {}) =>
+    aggregate: (options: AggregateGameStatQuery = {}) =>
       request<{
         stats: AggregateGameStat[];
         nextOffset: number | null;
