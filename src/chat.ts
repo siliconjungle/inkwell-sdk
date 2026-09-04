@@ -233,13 +233,19 @@ export class ChatConnection {
 
 export function createChat(request: GameServiceRequest = requestGameService, socketFactory?: SocketFactory) {
   return Object.freeze({
+    /** Hide only after your game provides its own chat UI. Applies to this play page, not other players. */
+    setDefaultPanelVisible: (visible: boolean) => {
+      if (typeof visible !== 'boolean') throw new TypeError('Chat panel visibility must be a boolean.');
+      return request<{ visible: boolean }>('chat', { operation: 'defaultPanel', visible });
+    },
     connect: (channel = 'game', options: ChatConnectOptions = {}) => new ChatConnection(channel, request, options, socketFactory).ready,
     list: () => request<{ channels: { name: string; serverWritesOnly: boolean }[] }>('chat', { operation: 'list' }),
   });
 }
 export function createServerChat(request: GameServiceRequest, socketFactory?: SocketFactory) {
+  const { setDefaultPanelVisible: _browserOnly, ...shared } = createChat(request, socketFactory);
   return Object.freeze({
-    ...createChat(request, socketFactory),
+    ...shared,
     define: (name: string, options: { serverWritesOnly?: boolean } = {}) => request<{ name: string; serverWritesOnly: boolean }>('chat', { ...options, operation: 'define', name: channelName(name) }),
     channel(name = 'game') {
       const channel = channelName(name);

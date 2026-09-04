@@ -3,6 +3,22 @@ import test from 'node:test';
 import { createChat, createServerChat, type ChatMessage } from './chat.js';
 import type { GameServiceRequest } from './game-services.js';
 
+void test('default panel visibility is an explicit browser-only game UI request', async () => {
+  const calls: unknown[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body }); return { visible: body.visible } as T;
+  };
+  const chat = createChat(request);
+  assert.deepEqual(await chat.setDefaultPanelVisible(false), { visible: false });
+  assert.deepEqual(await chat.setDefaultPanelVisible(true), { visible: true });
+  assert.deepEqual(calls, [
+    { service: 'chat', operation: 'defaultPanel', visible: false },
+    { service: 'chat', operation: 'defaultPanel', visible: true },
+  ]);
+  assert.throws(() => chat.setDefaultPanelVisible('false' as unknown as boolean), /boolean/);
+  assert.equal('setDefaultPanelVisible' in createServerChat(request), false);
+});
+
 const message = (sequence: number): ChatMessage => ({ id: `message-${sequence}`, sequence, channel: 'game', senderId: 'p_1', author: { displayName: 'NPC' }, body: 'hello', recipients: [], createdAt: new Date().toISOString() });
 class FakeSocket {
   readyState = 1;
