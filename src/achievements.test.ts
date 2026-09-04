@@ -17,6 +17,23 @@ test('individual achievement percentages select the requested name and preserve 
   assert.equal((await createServerAchievements(request).percentage('winner'))?.unlockedPlayers, 1);
 });
 
+test('stat schema is available without management methods in both SDK contexts', async () => {
+  const calls: Record<string, unknown>[] = [];
+  const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {
+    calls.push({ service, ...body });
+    return { stats: [], nextOffset: null } as T;
+  };
+  const browser = createStats(request);
+  assert.equal('definitions' in browser, false);
+  assert.equal('define' in browser, false);
+  assert.deepEqual(await browser.schema({ name: 'coins', offset: 100 }), { stats: [], nextOffset: null });
+  await createServerStats(request).schema();
+  assert.deepEqual(calls, [
+    { service: 'stats', operation: 'schema', name: 'coins', offset: 100 },
+    { service: 'stats', operation: 'schema' },
+  ]);
+});
+
 test('achievement discovery/summary and direct stat reads preserve read selectors', async () => {
   const calls: Record<string, unknown>[] = [];
   const request: GameServiceRequest = async <T>(service: string, body: Record<string, unknown>) => {

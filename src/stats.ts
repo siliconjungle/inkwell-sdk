@@ -51,6 +51,10 @@ export type GameStat = {
   value: number;
   updatedAt: string | null;
 };
+/** Read-only definition metadata. publicRead governs values, not this schema. */
+export type GameStatSchema = Required<Omit<GameStatDefinition, 'windowSeconds'>> & {
+  windowSeconds: number | null;
+};
 export type StatUpdate = { name: string; value: number; unlocked: string[]; queued?: false };
 export type AggregateGameStat = {
   name: string;
@@ -93,6 +97,8 @@ export function createStats(request: GameServiceRequest = requestGameService) {
   };
   return Object.freeze({
     onChange: onStatChange,
+    schema: (options: { name?: string; offset?: number } = {}) =>
+      request<{ stats: GameStatSchema[]; nextOffset: number | null }>('stats', { ...options, operation: 'schema' }),
     async get(name: string, options: { username?: string } = {}) {
       const result = await request<{ stats: GameStat[] } & CachedGameRead>('stats', { ...options, operation: 'get', name });
       const stat = result.stats[0];

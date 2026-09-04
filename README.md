@@ -252,6 +252,28 @@ expiry, 50 recent failure records. Clearing browser data removes pending saves.
 `disable()` stops queueing/retries without deleting pending data. This module
 does not cache game assets or make a fresh offline login possible.
 
+### Read-only stat schema
+
+```ts
+const page = await Inkwell.stats.schema() // { stats, nextOffset }
+const coins = await Inkwell.stats.schema({ name: 'coins' })
+// Fetch subsequent pages with { offset: page.nextOffset } until null.
+```
+
+This returns complete stat definition metadata: name/title, numeric kind, default,
+bounds, maxChange, increment-only/server-write/public-read flags, aggregation and
+AVGRATE window. It never returns saved player values, internal IDs, or management
+permissions. Schema is readable by guests with a valid game session;
+`publicRead` controls other players' **values**, not definition metadata.
+The response is name-sorted,100 per page, and an optional exact name filter is
+applied before pagination. Missing names return an empty page. It is always
+current-game scoped and is not cached by the optional offline module.
+
+Backends expose the same `context.stats.schema()` and runtime-services method.
+For achievement metadata, use `achievements.list({ game?, locale?, offset? })`;
+locked hidden achievements retain their existing redaction. Creator-only
+`stats.definitions()` and mutation methods remain separate.
+
 ### Progress notifications
 Achievement progress can also be shown without persisting it:
 
