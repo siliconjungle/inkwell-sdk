@@ -154,7 +154,25 @@ double-count. Await writes for persistence; automatic offline queuing is still
 pending. `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
 
+### Progress notifications
+Achievement progress can also be shown without persisting it:
+
+```ts
+await achievements.indicateProgress('collector', 3, 10)
+const unsubscribe = achievements.onNotification(notice => {
+  // kind is 'unlocked' or 'progress'; this event comes from the current host.
+  updateGameUI(notice)
+})
+```
+
+Progress display does not change a stat or unlock an achievement. Saved awards
+appear in the platform player header, not over the game. Backend code can use
+`context.achievements.indicateProgressFor(username, name, current, max)`.
+Notifications are best-effort; query saved state after reconnecting. Call
+`unsubscribe()` when your UI is disposed.
+
 ## Game chat (optional module)
+
 
 ```ts
 import { chat } from '@silicon-jungle/inkwell-sdk/chat'

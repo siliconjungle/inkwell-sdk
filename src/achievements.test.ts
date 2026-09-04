@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createAchievements, createServerAchievements } from "./achievements.js";
+import { createAchievements, createServerAchievements, onAchievementNotification } from "./achievements.js";
 import { createStats, createServerStats } from "./stats.js";
 import type { GameServiceRequest } from "./game-services.js";
 
@@ -17,9 +17,36 @@ test("achievements allow cross-game reads, while unlock remains current-game sco
   assert.equal((await achievements.get("winner", { game: "other-game" }))?.unlocked, true);
   await achievements.unlock("visitor");
   await createServerAchievements(request).unlockFor("jungle", "winner");
+  await achievements.indicateProgress('collector', 3, 10, { locale: 'fr' });
+  await createServerAchievements(request).indicateProgressFor('jungle', 'collector', 5, 10);
   assert.equal(calls[0].game, "other-game");
   assert.equal(calls[1].game, undefined);
   assert.equal(calls[2].username, "jungle");
+  assert.deepEqual(calls[3], { operation: 'progress', name: 'collector', current: 3, max: 10, locale: 'fr' });
+  assert.equal(calls[4].username, 'jungle');
+});
+
+test('achievement notifications verify host source and origin, deduplicate, and unsubscribe', () => {
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, 'window');
+  const previousDocument = Object.getOwnPropertyDescriptor(globalThis, 'document');
+  const listeners = new Set<(event: unknown) => void>();
+  const parent = {};
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { referrer: 'https://inkwell.ing/games/test/play' } });
+  Object.defineProperty(globalThis, 'window', { configurable: true, value: { parent, addEventListener: (_type: string, listener: (event: unknown) => void) => listeners.add(listener), removeEventListener: (_type: string, listener: (event: unknown) => void) => listeners.delete(listener) } });
+  try {
+    const received: string[] = [];
+    const stop = onAchievementNotification(notice => received.push(notice.name));
+    const data = { source: 'inkwell-platform', version: 1, type: 'achievement.event', payload: { id: 'unlock:winner:date', kind: 'unlocked', name: 'winner', title: 'Winner', description: 'Win once', iconUrl: null } };
+    const emit = (source: unknown, origin: string) => { for (const listener of listeners) listener({ source, origin, data }); };
+    emit({}, 'https://inkwell.ing'); emit(parent, 'https://evil.example');
+    assert.deepEqual(received, []);
+    emit(parent, 'https://inkwell.ing'); emit(parent, 'https://inkwell.ing');
+    assert.deepEqual(received, ['winner']);
+    stop(); assert.equal(listeners.size, 0);
+  } finally {
+    if (previousWindow) Object.defineProperty(globalThis, 'window', previousWindow); else Reflect.deleteProperty(globalThis, 'window');
+    if (previousDocument) Object.defineProperty(globalThis, 'document', previousDocument); else Reflect.deleteProperty(globalThis, 'document');
+  }
 });
 test("stat SDK sends stable retry IDs and server player context", async () => {
   const calls: Record<string, unknown>[] = [];

@@ -1,4 +1,34 @@
 import { requestGameService, type GameServiceRequest } from "./game-services.js";
+import { parentOrigin } from './protocol.js';
+
+export type AchievementNotification = {
+  id: string; kind: 'unlocked' | 'progress'; name: string; title: string;
+  description: string; iconUrl: string | null; current?: number; max?: number;
+};
+
+export function onAchievementNotification(listener: (notice: AchievementNotification) => void) {
+  const origin = parentOrigin();
+  if (typeof window === 'undefined' || !origin) return () => {};
+  const seen = new Set<string>();
+  const receive = (event: MessageEvent) => {
+    if (event.source !== window.parent || event.origin !== origin) return;
+    const message = event.data;
+    const notice = message?.payload;
+    if (message?.source !== 'inkwell-platform' || message.version !== 1 || message.type !== 'achievement.event' ||
+      !notice || typeof notice.id !== 'string' || notice.id.length > 240 ||
+      !['unlocked', 'progress'].includes(notice.kind) || typeof notice.name !== 'string' || notice.name.length > 128 ||
+      typeof notice.title !== 'string' || notice.title.length > 160 ||
+      typeof notice.description !== 'string' || notice.description.length > 1000 ||
+      (notice.iconUrl !== null && (typeof notice.iconUrl !== 'string' || notice.iconUrl.length > 2048)) ||
+      seen.has(notice.id)) return;
+    if (notice.kind === 'progress' && (!Number.isInteger(notice.current) || !Number.isInteger(notice.max) || notice.current < 0 || notice.max <= 0 || notice.max > 2147483647 || notice.current > notice.max)) return;
+    seen.add(notice.id);
+    if (seen.size > 100) seen.delete(seen.values().next().value!);
+    listener(notice);
+  };
+  window.addEventListener('message', receive);
+  return () => window.removeEventListener('message', receive);
+}
 
 export type AchievementDefinition = {
   name: string;
@@ -39,6 +69,9 @@ export type AchievementUnlock = {
 
 export function createAchievements(request: GameServiceRequest = requestGameService) {
   return Object.freeze({
+    onNotification: onAchievementNotification,
+    indicateProgress: (name: string, current: number, max: number, options: { locale?: string } = {}) =>
+      request<{ displayed: boolean }>('achievements', { ...options, operation: 'progress', name, current, max }),
     list: (options: AchievementQuery = {}) =>
       request<{ achievements: Achievement[]; nextOffset: number | null }>("achievements", {
         ...options,
@@ -66,6 +99,8 @@ export function createAchievements(request: GameServiceRequest = requestGameServ
 export function createServerAchievements(request: GameServiceRequest) {
   return Object.freeze({
     ...createAchievements(request),
+    indicateProgressFor: (username: string, name: string, current: number, max: number, options: { locale?: string } = {}) =>
+      request<{ displayed: boolean }>('achievements', { ...options, operation: 'progress', username, name, current, max }),
     definitions: (offset = 0) =>
       request<{ achievements: (Achievement & AchievementDefinition)[]; nextOffset: number | null }>(
         "achievements",
