@@ -71,6 +71,13 @@ export type AchievementUnlock = {
 
 export function createAchievements(request: GameServiceRequest = requestGameService) {
   return Object.freeze({
+    games: (options: { after?: string; query?: string } = {}) =>
+      request<{ games: { slug: string; title: string; publisherUsername: string; achievementCount: number }[]; nextCursor: string | null }>('achievements', { ...options, operation: 'games' }),
+    summary: (options: Pick<AchievementQuery, 'game' | 'username'> = {}) =>
+      request<{ total: number; unlocked: number }>('achievements', { ...options, operation: 'summary' }),
+    async count(options: Pick<AchievementQuery, 'game'> = {}) {
+      return (await request<{ total: number }>('achievements', { ...options, operation: 'summary' })).total;
+    },
     onNotification: onAchievementNotification,
     indicateProgress: (name: string, current: number, max: number, options: { locale?: string } = {}) =>
       request<{ displayed: boolean }>('achievements', { ...options, operation: 'progress', name, current, max }),
@@ -94,7 +101,7 @@ export function createAchievements(request: GameServiceRequest = requestGameServ
       request<{ success: true }>("achievements", { operation: "clear", name }),
     percentages: (options: { game?: string; offset?: number } = {}) =>
       request<{
-        achievements: { name: string; percent: number; unlockedPlayers: number }[];
+        achievements: { name: string; percent: number; unlockedPlayers: number; unlocked: boolean }[];
         nextOffset: number | null;
       }>("achievements", { ...options, operation: "percentages" }),
   });

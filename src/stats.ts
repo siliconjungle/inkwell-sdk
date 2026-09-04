@@ -48,6 +48,11 @@ export function createStats(request: GameServiceRequest = requestGameService) {
     });
   };
   return Object.freeze({
+    async get(name: string, options: { username?: string } = {}) {
+      const result = await request<{ stats: GameStat[] } & CachedGameRead>('stats', { ...options, operation: 'get', name });
+      const stat = result.stats[0];
+      return stat ? { ...stat, offline: result.offline, cachedAt: result.cachedAt, pendingWrites: result.pendingWrites } : null;
+    },
     reset: (options: { achievements?: boolean } = {}) =>
       request<{ statsCleared: number; achievementsCleared: number }>("stats", {
         ...options,
