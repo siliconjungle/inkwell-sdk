@@ -253,7 +253,7 @@ The entry count is a total, not a list of private player identities.
 import { offline } from '@silicon-jungle/inkwell-sdk/offline'
 await offline.enable() // Online, signed-in session required first.
 const result = await stats.increment('coins', 1)
-if (result.queued) showPendingSave() // On this device, not yet server-confirmed.
+if (result.queued) showPendingStatUpdate() // On this device, not yet server-confirmed.
 const { pending, failures } = await offline.status()
 await offline.flush() // Reconnect also triggers automatic retries.
 ```
@@ -264,12 +264,20 @@ so a new immutable build origin does not lose them. Enable again each play
 session. Own-player reads may use cached responses tagged `offline`, `cachedAt`
 and `pendingWrites`; they do not optimistically include pending mutations.
 Cross-game/other-player reads, clears, resets and backend operations are never
-queued. Resets invalidate older pending writes. Failed/expired saves appear in
+queued. Resets invalidate older pending writes. Failed/expired submissions appear in
 `status().failures`; no synthetic unlock is reported before server acceptance.
 Limits: 1,000 writes / 512,000 serialized characters per game/player, seven-day
-expiry, 50 recent failure records. Clearing browser data removes pending saves.
+expiry, 50 recent failure records. Clearing browser data removes pending submissions.
 `disable()` stops queueing/retries without deleting pending data. This module
 does not cache game assets or make a fresh offline login possible.
+
+Game saves and conflict resolution belong to the creator. This module is only
+an opt-in retry queue for explicit stat writes and achievement unlocks, not a
+game-save system or a “most progress wins” merger. `set` overwrites the current
+value when accepted; `increment` applies a delta once per retry ID. Two devices
+submitting independent deltas contribute both; two absolute sets retain normal
+write ordering, subject to the stat's bounds and increment-only restrictions.
+Creators choose what to submit and how to reconcile their own game state.
 
 ### Atomic backend progress batches
 
