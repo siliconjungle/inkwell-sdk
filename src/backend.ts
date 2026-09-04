@@ -1,6 +1,9 @@
 import {
   BACKEND_PROTOCOL_VERSION,
+  BINARY_EVENTS_VERSION,
+  BINARY_NEGOTIATION_ACTION,
   decodeFrame,
+  encodeBinaryEvent,
   encodeFrame,
   frameReliablePayload,
   MAX_UNRELIABLE_FRAME_BYTES,
@@ -710,8 +713,20 @@ async function requestConnection(timeoutMs: number): Promise<ConnectionDescripto
   });
 }
 
-export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProtocol> {
-  private readonly handlers = new Map<string, Set<(payload: unknown) => void>>();
+export class BackendConnection<
+  Protocol extends BackendProtocol = AnyBackendProtocol,
+> {
+  private readonly handlers = new Map<
+    string,
+    Set<(payload: unknown) => void>
+  >();
+  private readonly binaryHandlers = new Map<
+    string,
+    Set<(payload: Uint8Array, delivery: Delivery) => void>
+  >();
+  private binaryEnabled = false;
+  private binaryNegotiation: Promise<boolean> | null = null;
+  private binaryRequestId: string | null = null;
   private readonly pending = new Map<string, PendingAction>();
   private closed = false;
 
@@ -731,6 +746,73 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
 
   get capabilities() {
     return this.transport.capabilities;
+  }
+
+  get binaryEvents() {
+    return this.binaryEnabled;
+  }
+
+  /** Negotiate once per connection. Old/opted-out servers keep JSON support. */
+  negotiateBinaryEvents(
+    options: { timeoutMs?: number } = {},
+  ): Promise<boolean> {
+    this.assertOpen();
+    if (this.binaryNegotiation) return this.binaryNegotiation;
+    const timeoutMs = options.timeoutMs ?? 2_000;
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > 60_000) {
+      throw new RangeError(
+        'Binary negotiation timeout must be between 0 and 60000 ms.',
+      );
+    }
+    this.binaryNegotiation = this.action(
+      BINARY_NEGOTIATION_ACTION as EventName<Protocol['actions']>,
+      { version: BINARY_EVENTS_VERSION } as ActionInput<
+        Protocol['actions'][EventName<Protocol['actions']>]
+      >,
+      { timeoutMs },
+    )
+      .then(() => this.binaryEnabled)
+      .catch((error: unknown) => {
+        if (
+          error instanceof BackendActionError &&
+          ['unknown_action', 'unsupported_binary', 'timeout'].includes(
+            error.code,
+          )
+        )
+          return false;
+        throw error;
+      });
+    return this.binaryNegotiation;
+  }
+
+  onBinary(
+    name: string,
+    handler: (payload: Uint8Array, delivery: Delivery) => void,
+  ) {
+    const handlers = this.binaryHandlers.get(name) ?? new Set();
+    handlers.add(handler);
+    this.binaryHandlers.set(name, handlers);
+    return () => {
+      handlers.delete(handler);
+      if (!handlers.size) this.binaryHandlers.delete(name);
+    };
+  }
+
+  sendBinaryReliable(name: string, payload: Uint8Array) {
+    this.assertBinaryEnabled();
+    return this.transport.sendReliable(encodeBinaryEvent(name, payload));
+  }
+
+  sendBinaryUnreliable(name: string, payload: Uint8Array) {
+    this.assertBinaryEnabled();
+    return this.transport.sendUnreliable(
+      encodeBinaryEvent(
+        name,
+        payload,
+        'unreliable',
+        this.capabilities.maxUnreliableFrameBytes,
+      ),
+    );
   }
 
   on<Name extends EventName<Protocol['serverEvents']>>(
@@ -795,8 +877,11 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
       );
     }
     if (this.pending.size >= 128)
-      return Promise.reject(new BackendConnectionError('Too many pending actions.'));
+      return Promise.reject(
+        new BackendConnectionError('Too many pending actions.'),
+      );
     const id = createId();
+    if (String(name) === BINARY_NEGOTIATION_ACTION) this.binaryRequestId = id;
     const timeoutMs = options.timeoutMs ?? this.actionTimeoutMs;
     return new Promise((resolve, reject) => {
       const cleanup = () => {
@@ -811,7 +896,12 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
       };
       const timer = setTimeout(() => {
         cleanup();
-        reject(new BackendActionError('timeout', `Action ${String(name)} timed out.`));
+        reject(
+          new BackendActionError(
+            'timeout',
+            `Action ${String(name)} timed out.`,
+          ),
+        );
       }, timeoutMs);
       this.pending.set(id, {
         timer,
@@ -849,13 +939,30 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
   close(code?: number, reason?: string) {
     if (this.closed) return;
     this.closed = true;
+    this.binaryEnabled = false;
     this.transport.close(code, reason);
-    this.rejectPending(new BackendConnectionError('Backend connection closed.'));
+    this.rejectPending(
+      new BackendConnectionError('Backend connection closed.'),
+    );
   }
 
   private receive(bytes: Uint8Array, _delivery: Delivery) {
     if (this.closed) return;
     const frame = decodeFrame(bytes, _delivery);
+    if (frame.kind === 'event.binary') {
+      // Datagram delivery can overtake the reliable negotiation response.
+      if (!this.binaryEnabled) {
+        if (_delivery === 'reliable')
+          throw new BackendConnectionError(
+            'Binary events have not been negotiated.',
+          );
+        return;
+      }
+      for (const handler of this.binaryHandlers.get(frame.name) ?? []) {
+        queueMicrotask(() => handler(frame.payload, _delivery));
+      }
+      return;
+    }
     if (frame.kind === 'event') {
       for (const handler of this.handlers.get(frame.name) ?? []) {
         queueMicrotask(() => handler(frame.payload));
@@ -863,10 +970,25 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
       return;
     }
     if (frame.kind === 'action.result') {
+      if (_delivery !== 'reliable')
+        throw new BackendConnectionError(
+          'Action results require reliable delivery.',
+        );
+      if (frame.id === this.binaryRequestId && this.pending.has(frame.id)) {
+        this.binaryEnabled =
+          typeof frame.payload === 'object' &&
+          frame.payload !== null &&
+          (frame.payload as { version?: unknown }).version ===
+            BINARY_EVENTS_VERSION;
+      }
       this.pending.get(frame.id)?.resolve(frame.payload);
       return;
     }
     if (frame.kind === 'action.error') {
+      if (_delivery !== 'reliable')
+        throw new BackendConnectionError(
+          'Action errors require reliable delivery.',
+        );
       this.pending
         .get(frame.id)
         ?.reject(new BackendActionError(frame.error.code, frame.error.message));
@@ -876,6 +998,7 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
   private handleClose(reason?: Error) {
     if (this.closed) return;
     this.closed = true;
+    this.binaryEnabled = false;
     this.rejectPending(
       reason ?? new BackendConnectionError('Backend connection closed.'),
     );
@@ -890,7 +1013,16 @@ export class BackendConnection<Protocol extends BackendProtocol = AnyBackendProt
   }
 
   private assertOpen() {
-    if (this.closed) throw new BackendConnectionError('Backend connection is closed.');
+    if (this.closed)
+      throw new BackendConnectionError('Backend connection is closed.');
+  }
+
+  private assertBinaryEnabled() {
+    this.assertOpen();
+    if (!this.binaryEnabled)
+      throw new BackendConnectionError(
+        'Binary events have not been negotiated.',
+      );
   }
 }
 
