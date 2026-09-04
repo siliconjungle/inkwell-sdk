@@ -73,8 +73,8 @@ export function createStats(request: GameServiceRequest = requestGameService) {
 export function createServerStats(request: GameServiceRequest) {
   return Object.freeze({
     ...createStats(request),
-    definitions: () =>
-      request<{ stats: GameStatDefinition[] }>("stats", { operation: "definitions" }),
+    definitions: (offset = 0) =>
+      request<{ stats: GameStatDefinition[]; nextOffset: number | null }>("stats", { operation: "definitions", offset }),
     define: (definition: GameStatDefinition) =>
       request<{ stat: GameStatDefinition }>("stats", {
         operation: "define",

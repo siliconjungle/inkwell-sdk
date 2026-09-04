@@ -62,9 +62,11 @@ test("stat SDK sends stable retry IDs and server player context", async () => {
   await stats.increment("coins", 3, { requestId });
   await stats.increment("coins", 3, { requestId });
   await createServerStats(request).forPlayer("jungle").updateAverage("speed", 100, 10);
+  await createServerStats(request).definitions(100);
   assert.equal(calls[0].requestId, calls[1].requestId);
   assert.equal(calls[2].username, "jungle");
   assert.equal(calls[2].seconds, 10);
+  assert.deepEqual(calls[3], { operation: 'definitions', offset: 100 });
   assert.throws(() => stats.updateAverage("speed", 10, 0));
   assert.throws(() => stats.set("coins", Infinity));
 });
