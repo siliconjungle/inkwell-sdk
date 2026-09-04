@@ -8,6 +8,8 @@ import {
 } from "./wire.js";
 import type { InkwellDatabase, InkwellObjectStorage } from "./storage.js";
 import type { createServerLeaderboards } from "./leaderboards.js";
+import type { createServerAchievements } from "./achievements.js";
+import type { createServerStats } from "./stats.js";
 
 export type BackendIdentity = Readonly<{
   playerId: string;
@@ -18,6 +20,8 @@ export type BackendIdentity = Readonly<{
 }>;
 
 export type BackendRuntimeServices = Readonly<{
+  achievements: ReturnType<typeof createServerAchievements>;
+  stats: ReturnType<typeof createServerStats>;
   leaderboards: ReturnType<typeof createServerLeaderboards>;
   database: InkwellDatabase;
   storage: InkwellObjectStorage;
@@ -95,6 +99,8 @@ export class ServerConnection<Protocol extends BackendProtocol = AnyBackendProto
 }
 
 export type BackendContext<Protocol extends BackendProtocol = AnyBackendProtocol> = Readonly<{
+  achievements: ReturnType<typeof createServerAchievements>;
+  stats: ReturnType<typeof createServerStats>;
   leaderboards: ReturnType<typeof createServerLeaderboards>;
   database: InkwellDatabase;
   storage: InkwellObjectStorage;
@@ -178,6 +184,8 @@ export class BackendServer<Protocol extends BackendProtocol = AnyBackendProtocol
     const owner = this;
     this.context = Object.freeze({
       leaderboards: services.leaderboards,
+      achievements: services.achievements,
+      stats: services.stats,
       database: services.database,
       storage: services.storage,
       fetch: services.fetch,

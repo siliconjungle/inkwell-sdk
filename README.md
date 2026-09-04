@@ -124,6 +124,36 @@ score, details and update time, never private account data. Signed-in accounts
 are required for score persistence. Submissions are limited to 10 per
 player/game per fixed ten-minute window. Send results, not per-frame scores.
 
+## Achievements and stats
+
+These optional modules require the game-services platform release.
+
+```ts
+import { achievements } from '@silicon-jungle/inkwell-sdk/achievements'
+import { stats } from '@silicon-jungle/inkwell-sdk/stats'
+
+await achievements.unlock('first_win')
+const other = await achievements.get('explorer', { game: 'another-game' })
+if (other?.unlocked) await achievements.unlock('well_travelled')
+const requestId = crypto.randomUUID() // reuse only when retrying this update
+await stats.increment('coins', 1, { requestId })
+await stats.updateAverage('points_per_second', 120, 30)
+```
+
+`Inkwell.achievements` and `Inkwell.stats` expose the same APIs. Backend contexts
+and `createRuntimeServices()` additionally provide definition management,
+`achievements.unlockFor(username, name)` and `stats.forPlayer(username)`.
+Cross-game achievement reads require public, published games and never permit
+cross-game writes. Hidden achievement details stay hidden until unlocked.
+
+Stats support integer/fractional/average values, bounds, increment-only writes,
+maximum changes, backend-only authority, and aggregated totals/daily history.
+Linked achievements unlock in the same transaction as a successful stat update.
+Repeated unlocks preserve the original date; repeated stat request IDs cannot
+double-count. Await writes for persistence; automatic offline queuing is still
+pending. `achievements.clear(name)` and `stats.reset({ achievements: true })`
+support testing, respecting backend-only write restrictions.
+
 ## Development
 
 ```bash

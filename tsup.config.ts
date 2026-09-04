@@ -2,6 +2,8 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
+    achievements: "src/achievements.ts",
+    stats: "src/stats.ts",
     index: "src/index.ts",
     core: "src/core.ts",
     session: "src/session.ts",

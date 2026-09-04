@@ -1,5 +1,7 @@
 import { createGameServiceRequest } from "./game-services.js";
 import { createServerLeaderboards } from "./leaderboards.js";
+import { createServerAchievements } from "./achievements.js";
+import { createServerStats } from "./stats.js";
 
 export type DatabaseValue = string | number | boolean | null;
 
@@ -305,6 +307,10 @@ export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {
   });
   return Object.freeze({
     database: new InkwellDatabase(client),
+    achievements: createServerAchievements(
+      createGameServiceRequest({ baseUrl, token, fetch: options.fetch }),
+    ),
+    stats: createServerStats(createGameServiceRequest({ baseUrl, token, fetch: options.fetch })),
     storage: new InkwellObjectStorage(client),
     leaderboards: createServerLeaderboards(
       createGameServiceRequest({ baseUrl, token, fetch: options.fetch }),
