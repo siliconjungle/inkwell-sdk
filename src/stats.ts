@@ -1,5 +1,34 @@
 import { requestGameService, type GameServiceRequest } from "./game-services.js";
 import type { CachedGameRead, QueuedGameWrite } from './offline.js';
+import { parentOrigin } from './protocol.js';
+
+export type GameStatChange = {
+  id: string;
+  kind: 'updated' | 'reset' | 'refresh';
+  names: string[];
+};
+
+/** Browser invalidation hint, not a persisted value or a reliable event log. */
+export function onStatChange(listener: (change: GameStatChange) => void) {
+  const origin = parentOrigin();
+  if (typeof window === 'undefined' || !origin) return () => {};
+  const seen = new Set<string>();
+  const receive = (event: MessageEvent) => {
+    if (event.source !== window.parent || event.origin !== origin) return;
+    const message = event.data;
+    const change = message?.payload;
+    if (message?.source !== 'inkwell-platform' || message.version !== 1 || message.type !== 'stats.event' ||
+      !change || typeof change.id !== 'string' || !change.id || change.id.length > 100 ||
+      !['updated', 'reset', 'refresh'].includes(change.kind) ||
+      !Array.isArray(change.names) || change.names.length > 100 ||
+      !change.names.every((name: unknown) => typeof name === 'string' && /^[A-Za-z0-9_.:-]{1,128}$/.test(name)) || seen.has(change.id)) return;
+    seen.add(change.id);
+    if (seen.size > 100) seen.delete(seen.values().next().value!);
+    listener({ id: change.id, kind: change.kind, names: [...change.names] });
+  };
+  window.addEventListener('message', receive);
+  return () => window.removeEventListener('message', receive);
+}
 
 export type GameStatDefinition = {
   name: string;
@@ -63,6 +92,7 @@ export function createStats(request: GameServiceRequest = requestGameService) {
     });
   };
   return Object.freeze({
+    onChange: onStatChange,
     async get(name: string, options: { username?: string } = {}) {
       const result = await request<{ stats: GameStat[] } & CachedGameRead>('stats', { ...options, operation: 'get', name });
       const stat = result.stats[0];

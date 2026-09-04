@@ -163,6 +163,24 @@ It returns `null` for unavailable or still-hidden achievements. Use
 Stats support integer/fractional/average values, bounds, increment-only writes,
 maximum changes, backend-only authority, and aggregated totals/daily history.
 Linked achievements unlock in the same transaction as a successful stat update.
+Browser games can subscribe to backend-driven changes:
+
+```js
+const stop = Inkwell.stats.onChange(({ kind, names }) => {
+  // Re-read the relevant stats and redraw your UI.
+  // kind: 'updated', 'reset', or 'refresh'; names is empty for reset/refresh.
+})
+// Call stop() when your screen or game tears down.
+```
+
+These are best-effort invalidation hints, not values or a durable event log.
+Read initial state when starting; re-read on `refresh` after the account socket
+connects/reconnects. Backend writes/resets notify only the affected account's
+current game frame, never other games or DMs. The host invalidates cached stats
+and linked achievement reads before forwarding the hint. Pending offline writes
+remain queued and retain reset-epoch protection. Notification delivery failure
+does not undo a committed write. `onChange` is browser-only (a no-op on a backend).
+
 Repeated unlocks preserve the original date; repeated stat request IDs cannot
 double-count. Await writes for persistence (or an explicit queued receipt when
 offline support is enabled). `achievements.clear(name)` and `stats.reset({ achievements: true })`
