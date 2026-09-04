@@ -269,6 +269,25 @@ appear in the platform player header, not over the game. Backend code can use
 Notifications are best-effort; query saved state after reconnecting. Call
 `unsubscribe()` when your UI is disposed.
 
+Subscribe separately when your UI needs to re-read saved achievement state:
+
+```ts
+const stopChanges = achievements.onChange(({ kind, names }) => {
+  // 'updated': named backend unlock/clear; 'reset': player stats reset;
+  // 'refresh': reconnect or a stat change that may affect achievement progress.
+  void refreshAchievementUI()
+})
+```
+
+These are best-effort hints for the current game/player, not authoritative
+values or a durable event log. The host invalidates its offline read cache
+before delivering a hint, while preserving pending writes. Empty `names` means
+re-read the relevant achievement list. Register before loading your initial
+state and query again after reconnect; missed hints do not undo committed
+awards. This subscription is browser-only (a no-op on a backend). Call
+`stopChanges()` when disposing the UI. Cross-game reads do not subscribe to
+other games' updates.
+
 ## Game chat (optional module)
 
 
