@@ -1,3 +1,6 @@
+import { createGameServiceRequest } from "./game-services.js";
+import { createServerLeaderboards } from "./leaderboards.js";
+
 export type DatabaseValue = string | number | boolean | null;
 
 export type DatabaseStatement = {
@@ -38,7 +41,7 @@ export class RuntimeServiceError extends Error {
     message: string,
   ) {
     super(message);
-    this.name = 'RuntimeServiceError';
+    this.name = "RuntimeServiceError";
   }
 }
 
@@ -53,17 +56,17 @@ function validatePath(path: string) {
   if (
     !path ||
     path.length > 500 ||
-    path.startsWith('/') ||
-    path.includes('\\') ||
-    path.split('/').some((segment) => !segment || segment === '.' || segment === '..')
+    path.startsWith("/") ||
+    path.includes("\\") ||
+    path.split("/").some((segment) => !segment || segment === "." || segment === "..")
   ) {
-    throw new TypeError('Storage keys must be safe relative paths up to 500 characters.');
+    throw new TypeError("Storage keys must be safe relative paths up to 500 characters.");
   }
   return path;
 }
 
 function validatePrefix(prefix: string) {
-  const value = prefix.endsWith('/') ? prefix.slice(0, -1) : prefix;
+  const value = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
   if (value) validatePath(value);
   return prefix;
 }
@@ -71,7 +74,7 @@ function validatePrefix(prefix: string) {
 function validateWorldId(worldId: string) {
   if (!/^[A-Za-z0-9_.:-]{1,128}$/.test(worldId)) {
     throw new TypeError(
-      'World IDs must be 1-128 letters, numbers, dots, colons, underscores, or hyphens.',
+      "World IDs must be 1-128 letters, numbers, dots, colons, underscores, or hyphens.",
     );
   }
   return worldId;
@@ -80,25 +83,23 @@ function validateWorldId(worldId: string) {
 function bodySize(value: BodyInit, declared?: number) {
   if (declared !== undefined) {
     if (!Number.isSafeInteger(declared) || declared < 0) {
-      throw new TypeError('Storage object size must be a non-negative safe integer.');
+      throw new TypeError("Storage object size must be a non-negative safe integer.");
     }
     return declared;
   }
-  if (typeof value === 'string') return new TextEncoder().encode(value).byteLength;
+  if (typeof value === "string") return new TextEncoder().encode(value).byteLength;
   if (value instanceof URLSearchParams) {
     return new TextEncoder().encode(value.toString()).byteLength;
   }
   if (value instanceof Blob) return value.size;
   if (value instanceof ArrayBuffer) return value.byteLength;
   if (ArrayBuffer.isView(value)) return value.byteLength;
-  throw new TypeError(
-    'Streaming and multipart storage uploads require an explicit size option.',
-  );
+  throw new TypeError("Streaming and multipart storage uploads require an explicit size option.");
 }
 
 function encodeBase64Utf8(value: string) {
   const bytes = new TextEncoder().encode(value);
-  let binary = '';
+  let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary);
 }
@@ -111,34 +112,30 @@ class RuntimeClient {
 
   constructor(options: RuntimeClientOptions) {
     this.baseUrl = new URL(options.baseUrl);
-    if (!['https:', 'http:'].includes(this.baseUrl.protocol))
-      throw new TypeError('Runtime service URL must use HTTP or HTTPS.');
-    if (!options.token) throw new TypeError('Runtime service token is required.');
+    if (!["https:", "http:"].includes(this.baseUrl.protocol))
+      throw new TypeError("Runtime service URL must use HTTP or HTTPS.");
+    if (!options.token) throw new TypeError("Runtime service token is required.");
     this.token = options.token;
     this.fetcher = options.fetch ?? fetch;
     this.timeoutMs = options.timeoutMs ?? 15_000;
   }
 
-  async request(
-    path: string,
-    init: RequestInit = {},
-    timeoutMs = this.timeoutMs,
-  ) {
+  async request(path: string, init: RequestInit = {}, timeoutMs = this.timeoutMs) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     const externalSignal = init.signal;
     const abort = () => controller.abort();
     if (externalSignal?.aborted) controller.abort();
-    externalSignal?.addEventListener('abort', abort, { once: true });
+    externalSignal?.addEventListener("abort", abort, { once: true });
     try {
       const headers = new Headers(init.headers);
-      headers.set('authorization', `Bearer ${this.token}`);
-      const requestInit: RequestInit & { duplex?: 'half' } = {
+      headers.set("authorization", `Bearer ${this.token}`);
+      const requestInit: RequestInit & { duplex?: "half" } = {
         ...init,
         signal: controller.signal,
         headers,
       };
-      if (init.body instanceof ReadableStream) requestInit.duplex = 'half';
+      if (init.body instanceof ReadableStream) requestInit.duplex = "half";
       const response = await this.fetcher(new URL(path, this.baseUrl), requestInit);
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as {
@@ -147,19 +144,19 @@ class RuntimeClient {
         } | null;
         throw new RuntimeServiceError(
           response.status,
-          body?.code || 'request_failed',
+          body?.code || "request_failed",
           body?.error || `Runtime service request failed (${response.status}).`,
         );
       }
       return response;
     } catch (error) {
       if (controller.signal.aborted && !externalSignal?.aborted) {
-        throw new RuntimeServiceError(504, 'timeout', 'Runtime service request timed out.');
+        throw new RuntimeServiceError(504, "timeout", "Runtime service request timed out.");
       }
       throw error;
     } finally {
       clearTimeout(timer);
-      externalSignal?.removeEventListener('abort', abort);
+      externalSignal?.removeEventListener("abort", abort);
     }
   }
 }
@@ -172,7 +169,7 @@ export class InkwellDatabase {
     params: DatabaseValue[] = [],
   ) {
     const [result] = await this.batch<Row>([{ sql, params }]);
-    if (!result) throw new RuntimeServiceError(502, 'empty_result', 'Database returned no result.');
+    if (!result) throw new RuntimeServiceError(502, "empty_result", "Database returned no result.");
     return result;
   }
 
@@ -180,21 +177,25 @@ export class InkwellDatabase {
     statements: DatabaseStatement[],
   ): Promise<DatabaseResult<Row>[]> {
     if (!statements.length || statements.length > 20)
-      throw new TypeError('Database batches must contain 1-20 statements.');
+      throw new TypeError("Database batches must contain 1-20 statements.");
     for (const statement of statements) {
       if (!statement.sql.trim() || statement.sql.length > 100_000)
-        throw new TypeError('Database SQL must contain 1-100,000 characters.');
+        throw new TypeError("Database SQL must contain 1-100,000 characters.");
       if ((statement.params?.length ?? 0) > 100)
-        throw new TypeError('Database statements accept at most 100 parameters.');
+        throw new TypeError("Database statements accept at most 100 parameters.");
     }
-    const response = await this.client.request('/api/v1/runtime/database/query', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
+    const response = await this.client.request("/api/v1/runtime/database/query", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
       body: JSON.stringify({ statements }),
     });
     const body = (await response.json()) as { results?: DatabaseResult<Row>[] };
     if (!Array.isArray(body.results))
-      throw new RuntimeServiceError(502, 'invalid_response', 'Database returned an invalid response.');
+      throw new RuntimeServiceError(
+        502,
+        "invalid_response",
+        "Database returned an invalid response.",
+      );
     return body.results;
   }
 }
@@ -217,12 +218,12 @@ export class InkwellObjectStorage {
     const headers = new Headers();
     const size = bodySize(value, options.size);
     if (size > 100 * 1024 * 1024) {
-      throw new TypeError('Storage objects must be at most 100 MiB.');
+      throw new TypeError("Storage objects must be at most 100 MiB.");
     }
-    headers.set('x-inkwell-content-length', String(size));
-    if (options.contentType) headers.set('content-type', options.contentType);
+    headers.set("x-inkwell-content-length", String(size));
+    if (options.contentType) headers.set("content-type", options.contentType);
     if (options.worldId) {
-      headers.set('x-inkwell-world-id', validateWorldId(options.worldId));
+      headers.set("x-inkwell-world-id", validateWorldId(options.worldId));
     }
     if (options.metadata) {
       const entries = Object.entries(options.metadata);
@@ -231,23 +232,23 @@ export class InkwellObjectStorage {
         entries.some(
           ([name, value]) =>
             !/^[A-Za-z0-9_.-]{1,64}$/.test(name) ||
-            typeof value !== 'string' ||
+            typeof value !== "string" ||
             value.length > 1_024,
         )
       ) {
         throw new TypeError(
-          'Storage metadata accepts at most 32 safe keys and 1,024 characters per value.',
+          "Storage metadata accepts at most 32 safe keys and 1,024 characters per value.",
         );
       }
       const encoded = encodeBase64Utf8(JSON.stringify(options.metadata));
       if (encoded.length > 8 * 1024) {
-        throw new TypeError('Encoded storage metadata must be at most 8 KiB.');
+        throw new TypeError("Encoded storage metadata must be at most 8 KiB.");
       }
-      headers.set('x-inkwell-metadata', encoded);
+      headers.set("x-inkwell-metadata", encoded);
     }
     const response = await this.client.request(
       `/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`,
-      { method: 'PUT', headers, body: value, signal: options.signal },
+      { method: "PUT", headers, body: value, signal: options.signal },
       120_000,
     );
     return (await response.json()) as StoredObjectInfo;
@@ -255,18 +256,17 @@ export class InkwellObjectStorage {
 
   async get(key: string, options: { signal?: AbortSignal } = {}) {
     validatePath(key);
-    return this.client.request(
-      `/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`,
-      { signal: options.signal },
-    );
+    return this.client.request(`/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`, {
+      signal: options.signal,
+    });
   }
 
   async delete(key: string, options: { signal?: AbortSignal } = {}) {
     validatePath(key);
-    await this.client.request(
-      `/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`,
-      { method: 'DELETE', signal: options.signal },
-    );
+    await this.client.request(`/api/v1/runtime/storage/object?key=${encodeURIComponent(key)}`, {
+      method: "DELETE",
+      signal: options.signal,
+    });
   }
 
   async list(options: { prefix?: string; cursor?: string; limit?: number } = {}) {
@@ -275,18 +275,16 @@ export class InkwellObjectStorage {
       options.limit !== undefined &&
       (!Number.isInteger(options.limit) || options.limit < 1 || options.limit > 1_000)
     ) {
-      throw new TypeError('Storage list limits must be integers from 1 to 1,000.');
+      throw new TypeError("Storage list limits must be integers from 1 to 1,000.");
     }
     if (options.cursor && options.cursor.length > 2_048) {
-      throw new TypeError('Storage cursor is too large.');
+      throw new TypeError("Storage cursor is too large.");
     }
     const query = new URLSearchParams();
-    if (options.prefix) query.set('prefix', options.prefix);
-    if (options.cursor) query.set('cursor', options.cursor);
-    if (options.limit) query.set('limit', String(options.limit));
-    const response = await this.client.request(
-      `/api/v1/runtime/storage?${query.toString()}`,
-    );
+    if (options.prefix) query.set("prefix", options.prefix);
+    if (options.cursor) query.set("cursor", options.cursor);
+    if (options.limit) query.set("limit", String(options.limit));
+    const response = await this.client.request(`/api/v1/runtime/storage?${query.toString()}`);
     return (await response.json()) as StoredObjectList;
   }
 }
@@ -296,7 +294,7 @@ export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {
   const token = options.token ?? process.env.INKWELL_RUNTIME_TOKEN;
   if (!baseUrl || !token) {
     throw new Error(
-      'INKWELL_RUNTIME_API_URL and INKWELL_RUNTIME_TOKEN are required in an Inkwell backend.',
+      "INKWELL_RUNTIME_API_URL and INKWELL_RUNTIME_TOKEN are required in an Inkwell backend.",
     );
   }
   const client = new RuntimeClient({
@@ -308,5 +306,8 @@ export function createRuntimeServices(options: Partial<RuntimeClientOptions> = {
   return Object.freeze({
     database: new InkwellDatabase(client),
     storage: new InkwellObjectStorage(client),
+    leaderboards: createServerLeaderboards(
+      createGameServiceRequest({ baseUrl, token, fetch: options.fetch }),
+    ),
   });
 }

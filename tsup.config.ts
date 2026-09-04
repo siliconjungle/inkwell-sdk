@@ -15,6 +15,7 @@ export default defineConfig({
     storage: "src/storage.ts",
     config: "src/config.ts",
     wire: "src/wire.ts",
+    leaderboards: "src/leaderboards.ts",
   },
   dts: true,
   format: ["esm"],

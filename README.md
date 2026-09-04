@@ -93,6 +93,37 @@ The SDK sends messages only to the trusted Inkwell player parent. It does not co
 
 Performance monitoring is opt-in. `Inkwell.performance.start()` sends one bounded aggregate sample every 30 seconds: FPS, p95/max frame time, long-task count and duration, visibility, and JS heap usage where the browser exposes it. It does not send raw traces, resource URLs, hardware details, or fingerprints.
 
+## Leaderboards
+
+Optional module (requires the platform game-services release):
+
+```ts
+import { leaderboards } from '@silicon-jungle/inkwell-sdk/leaderboards'
+
+const board = leaderboards.board('highscores')
+await board.submit({ score: 12500, details: [3], method: 'keepBest' })
+const top = await board.list({ scope: 'global', start: 1, limit: 20 })
+const friends = await board.list({ scope: 'friends' })
+const nearby = await board.aroundMe({ before: 5, after: 5 })
+const mine = await board.getMyEntry()
+```
+
+`Inkwell.leaderboards` exposes the same browser API. Create boards in Manage
+games, through the creator API, or the hosted backend context's
+`leaderboards.define()`. Backend boards expose `submitFor(username, submission)`,
+`queryFor(username, query)`, `update(definition)`, `reset()`,
+`deleteEntry(username)`, and `delete()`.
+`createRuntimeServices()` also supplies backend leaderboards outside the hosted
+backend context. Runtime credentials must stay on the server.
+
+Scores and up to 64 optional detail values are signed int32. Boards support
+ascending/descending ordering, numeric/seconds/milliseconds display, backend-only
+writes, and friends-only client reads. There are no replay attachments.
+Queries return `{ board, total, entries }`; entries expose username, avatar, rank,
+score, details and update time, never private account data. Signed-in accounts
+are required for score persistence. Submissions are limited to 10 per
+player/game per fixed ten-minute window. Send results, not per-frame scores.
+
 ## Development
 
 ```bash

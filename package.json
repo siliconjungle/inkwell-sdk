@@ -24,6 +24,10 @@
   "module": "./dist/index.js",
   "sideEffects": false,
   "exports": {
+    "./leaderboards": {
+      "types": "./dist/leaderboards.d.ts",
+      "import": "./dist/leaderboards.js"
+    },
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"

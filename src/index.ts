@@ -6,6 +6,9 @@ import { player } from "./player.js";
 import { presence } from "./presence.js";
 import { performanceMonitoring } from "./performance.js";
 import { backend, connectBackend, requestBackend } from "./backend.js";
+import { leaderboards } from "./leaderboards.js";
+export * from "./leaderboards.js";
+export { GameServiceError } from "./game-services.js";
 
 export { ready } from "./core.js";
 export { complete, session } from "./session.js";
@@ -53,5 +56,6 @@ export const Inkwell = Object.freeze({
   presence,
   performance: performanceMonitoring,
   backend,
+  leaderboards,
 });
 export default Inkwell;
