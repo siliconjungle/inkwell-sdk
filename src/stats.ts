@@ -23,6 +23,21 @@ export type GameStat = {
   updatedAt: string | null;
 };
 export type StatUpdate = { name: string; value: number; unlocked: string[]; queued?: false };
+export type AggregateGameStat = {
+  name: string;
+  /** Approximate JavaScript number. Use totalExact when precision matters. */
+  total: number;
+  /** Decimal sum of stored player values, without aggregate rounding. */
+  totalExact: string;
+  /** UTC days, today first, including days with no activity. */
+  history: {
+    day: string;
+    /** Approximate JavaScript number. */
+    delta: number;
+    /** Exact decimal change for this UTC day. */
+    deltaExact: string;
+  }[];
+};
 type RetryOptions = { requestId?: string };
 
 export function createStats(request: GameServiceRequest = requestGameService) {
@@ -71,7 +86,7 @@ export function createStats(request: GameServiceRequest = requestGameService) {
       write(name, count, "average", options, seconds),
     aggregate: (options: { historyDays?: number; offset?: number } = {}) =>
       request<{
-        stats: { name: string; total: number; history: { day: string; delta: number }[] }[];
+        stats: AggregateGameStat[];
         nextOffset: number | null;
       }>("stats", { ...options, operation: "aggregate" }),
   });

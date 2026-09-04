@@ -163,6 +163,18 @@ double-count. Await writes for persistence (or an explicit queued receipt when
 offline support is enabled). `achievements.clear(name)` and `stats.reset({ achievements: true })`
 support testing, respecting backend-only write restrictions.
 
+`stats.aggregate({ historyDays: 7 })` returns up to 100 aggregated stats per page
+(`nextOffset` for continuation). Each has `totalExact`, a decimal string summing
+the stored player values without losing digits when totals exceed JavaScript's
+safe-integer range. `total` remains an approximate number for convenience.
+History accepts 0–60 UTC days, today first, including zero-activity days; each
+entry has `day`, approximate `delta`, and decimal-string `deltaExact`.
+Use `BigInt(totalExact)` for integer stats, or a decimal library for fractional
+stats; converting the string back to `Number` can lose precision. This preserves
+aggregate precision, not precision already lost in individual floating-point
+game values. History measures daily net changes, including resets, not snapshots
+of each day's total. Omitting `historyDays` returns no history.
+
 ### Leaderboard discovery and dynamic creation
 
 ```ts
