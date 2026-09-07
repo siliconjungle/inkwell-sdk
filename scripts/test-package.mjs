@@ -26,9 +26,11 @@ try {
 import assert from 'node:assert/strict';
 import { Inkwell } from '@silicon-jungle/inkwell-sdk';
 import { createServerChat } from '@silicon-jungle/inkwell-sdk/chat';
-for (const name of ['backend', 'chat', 'player', 'stats', 'leaderboards', 'achievements', 'invites', 'performance', 'presence']) assert.ok(Inkwell[name]);
+for (const name of ['backend', 'chat', 'player', 'stats', 'leaderboards', 'achievements', 'invites', 'performance', 'presence', 'game', 'feedback']) assert.ok(Inkwell[name]);
 assert.equal(typeof Inkwell.chat.setDefaultPanelVisible, 'function');
 assert.equal(typeof Inkwell.invites.onAccepted, 'function');
+assert.equal(typeof Inkwell.game.get, 'function');
+assert.equal(typeof Inkwell.feedback.open, 'function');
 assert.equal('setDefaultPanelVisible' in createServerChat(async () => { throw new Error('No network allowed'); }), false);
 `);
   run(process.execPath, ['consumer.mjs']);
@@ -37,6 +39,8 @@ import { Inkwell } from '@silicon-jungle/inkwell-sdk';
 import { createServerChat } from '@silicon-jungle/inkwell-sdk/chat';
 void Inkwell.stats.aggregate({ names: ['coins'], startDate: '2024-02-28', endDate: '2024-03-01' });
 void Inkwell.chat.setDefaultPanelVisible(false);
+void Inkwell.game.get().then(game => { const website: string | null = game.websiteUrl; void website; });
+void Inkwell.feedback.open().then(result => { const opened: true = result.opened; void opened; });
 // @ts-expect-error A date range cannot be mixed with historyDays.
 void Inkwell.stats.aggregate({ historyDays: 3, startDate: '2024-02-28', endDate: '2024-03-01' });
 // @ts-expect-error Backend code cannot control a player's default chat panel.

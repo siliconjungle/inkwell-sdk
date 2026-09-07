@@ -1,5 +1,32 @@
 # Inkwell SDK
 
+### Player feedback and community links (0.0.8)
+
+The game page and player header provide a feedback form without any game code.
+Only signed-in players can submit; creators review private feedback in Manage
+→ Feedback and can keep, discard, or restore it while iterating with their tools.
+
+```ts
+import { Inkwell } from '@silicon-jungle/inkwell-sdk';
+const game = await Inkwell.game.get();
+// { slug, title, websiteUrl: string | null, discordUrl: string | null }
+// Call from your own feedback button:
+await Inkwell.feedback.open();
+```
+
+`feedback.open()` opens the host-owned form and resolves to `{ opened: true }`.
+It does not submit feedback or confirm that a player submitted it. Guests see
+sign-in; feedback text and the creator inbox are never exposed to game code.
+Both modules require the Inkwell player frame and reject when it is unavailable.
+Modular imports are `game` / `get` from `/game` and `feedback` / `open` from
+`/feedback`. The root also exports `GameInfo`, `getGame`, and `openFeedback`.
+
+Set optional links in Manage, through `websiteUrl` / `discordUrl` in the creator
+API, or `inkwell games update --game my-game --website https://example.com
+--discord https://discord.gg/example`. Omitting a field preserves it; null or
+an empty value clears it. Website accepts HTTP(S); Discord requires an HTTPS
+Discord invitation URL. Neither link is required to publish a game.
+
 ### Negotiated binary events (0.0.7)
 
 JSON events and actions remain compatible with existing games. For compact game
