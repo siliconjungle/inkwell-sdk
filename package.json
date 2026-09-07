@@ -1,6 +1,6 @@
 {
   "name": "@silicon-jungle/inkwell-sdk",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Tiny modular SDK for games hosted on Inkwell.",
   "homepage": "https://inkwell.ing/docs",
   "bugs": {
@@ -104,7 +104,15 @@
       "types": "./dist/loading.d.ts",
       "import": "./dist/loading.js"
     },
-    "./browser": "./dist/inkwell.browser.js"
+    "./browser": "./dist/inkwell.browser.js",
+    "./game": {
+      "types": "./dist/game.d.ts",
+      "import": "./dist/game.js"
+    },
+    "./feedback": {
+      "types": "./dist/feedback.d.ts",
+      "import": "./dist/feedback.js"
+    }
   },
   "scripts": {
     "build": "tsup && tsup --config tsup.browser.config.ts",

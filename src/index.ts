@@ -1,3 +1,8 @@
+import { game } from './game.js';
+import { feedback } from './feedback.js';
+export { game, get as getGame } from './game.js';
+export type { GameInfo } from './game.js';
+export { feedback, open as openFeedback } from './feedback.js';
 import { ready } from "./core.js";
 import { loading } from "./loading.js";
 import { session } from "./session.js";
@@ -61,6 +66,8 @@ export type {
 
 export const Inkwell = Object.freeze({
   ready,
+  game,
+  feedback,
   loading,
   session,
   analytics,
