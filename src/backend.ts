@@ -412,7 +412,7 @@ function asConnectionError(error: unknown) {
     : new BackendConnectionError(String(error));
 }
 
-const MAX_BACKEND_HTTP_BODY_BYTES = 1024 * 1024;
+const MAX_BACKEND_HTTP_BODY_BYTES = 8 * 1024 * 1024;
 const BACKEND_HTTP_METHODS = new Set([
   'GET',
   'POST',
@@ -446,11 +446,11 @@ function encodeBase64(bytes: Uint8Array) {
 
 function decodeBase64(value: string) {
   if (value.length > Math.ceil((MAX_BACKEND_HTTP_BODY_BYTES * 4) / 3) + 4) {
-    throw new BackendConnectionError('Backend response body is over 1 MiB.');
+    throw new BackendConnectionError('Backend response body is over 8 MiB.');
   }
   const binary = atob(value);
   if (binary.length > MAX_BACKEND_HTTP_BODY_BYTES) {
-    throw new BackendConnectionError('Backend response body is over 1 MiB.');
+    throw new BackendConnectionError('Backend response body is over 8 MiB.');
   }
   const bytes = new Uint8Array(binary.length);
   for (let index = 0; index < binary.length; index += 1) {
@@ -478,7 +478,7 @@ async function boundedRequestBody(
     total += value.byteLength;
     if (total > MAX_BACKEND_HTTP_BODY_BYTES) {
       await reader.cancel().catch(() => undefined);
-      throw new BackendConnectionError('Backend request body is over 1 MiB.');
+      throw new BackendConnectionError('Backend request body is over 8 MiB.');
     }
     chunks.push(value);
   }

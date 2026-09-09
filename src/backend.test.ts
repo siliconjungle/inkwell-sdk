@@ -185,6 +185,11 @@ test('backend request bridge preserves binary bodies without exposing session cr
       [0, 1, 2, 255],
     );
     assert.equal(observed?.type, 'backend.fetch');
+    const large = new Uint8Array(8 * 1024 * 1024).fill(71);
+    const largeResponse = await requestBackend('/save', { method: 'PUT', body: large });
+    assert.deepEqual(new Uint8Array(await largeResponse.arrayBuffer()), large);
+    await assert.rejects(requestBackend('/save', { method: 'PUT', body: new Uint8Array(large.length + 1) }), /over 8 MiB/);
+
   } finally {
     if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow);
     else Reflect.deleteProperty(globalThis, 'window');
