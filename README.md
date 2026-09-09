@@ -531,3 +531,5 @@ Inkwell.ready(); // after the game becomes interactive
 `defineGameConfig` from `/config` also accepts `game`, `client.entrypoint`, `client.engine`, `client.capabilities.threads`, and `client.startup`. Engine exports keep their own HTML shell. Thread support is opt-in and requires a compatible browser.
 
 Persistent game data remains developer-defined: use the existing backend `fetch` handler, trusted handler identity, database, and object storage. The engine examples demonstrate this without introducing a platform save format or a separate saves API.
+
+Backend HTTP save requests and responses support up to 8 MiB decoded payloads. Large snapshots should use object storage behind a small database revision pointer; database row limits remain independent. Games must update the SDK and run on a current creator runtime to use the larger budget. Reliable event/message limits are unchanged.
