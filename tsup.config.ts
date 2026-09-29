@@ -2,6 +2,7 @@ import { defineConfig } from "tsup";
 
 export default defineConfig({
   entry: {
+    mods: "src/mods.ts",
     game: "src/game.ts",
     feedback: "src/feedback.ts",
     invites: "src/invites.ts",
