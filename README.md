@@ -533,3 +533,23 @@ Inkwell.ready(); // after the game becomes interactive
 Persistent game data remains developer-defined: use the existing backend `fetch` handler, trusted handler identity, database, and object storage. The engine examples demonstrate this without introducing a platform save format or a separate saves API.
 
 Backend HTTP save requests and responses support up to 8 MiB decoded payloads. Large snapshots should use object storage behind a small database revision pointer; database row limits remain independent. Games must update the SDK and run on a current creator runtime to use the larger budget. Reliable event/message limits are unchanged.
+
+
+## Mod listings
+
+Mods are separate from hosted games. Every player can publish by default, without game creator approval. Link only mod components and media you have the rights to share, with installation instructions for a lawfully obtained base game. No mod files or game builds are uploaded.
+
+Import `createModClient` from `@silicon-jungle/inkwell-sdk/mods` for typed catalog and publishing operations. This entry point is separate from the game runtime SDK.
+
+```ts
+import { createModClient } from "@silicon-jungle/inkwell-sdk/mods";
+const { mods } = await createModClient().browse({ baseGame: "Example Game" });
+// Server/CLI only: never ship a developer token in browser code.
+const client = createModClient({ token: process.env.INKWELL_TOKEN });
+const { mod } = await client.get("my-mod");
+await client.update(mod.slug, { revision: mod.revision, visibility: "public", rightsConfirmed: true });
+```
+
+Methods: `browse`, `getPublic`, `list`, `get`, `create`, `update`, `remove`. Public requests never send your developer token. Owner requests require a token and reject redirects. `ModApiError.status` exposes API errors including permission denials and revision conflicts.
+
+See [mod publishing documentation](https://inkwell.ing/docs/mods).

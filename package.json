@@ -1,6 +1,6 @@
 {
   "name": "@silicon-jungle/inkwell-sdk",
-  "version": "0.0.9",
+  "version": "0.0.10",
   "description": "Tiny modular SDK for games hosted on Inkwell.",
   "homepage": "https://inkwell.ing/docs",
   "bugs": {
@@ -112,6 +112,10 @@
     "./feedback": {
       "types": "./dist/feedback.d.ts",
       "import": "./dist/feedback.js"
+    },
+    "./mods": {
+      "types": "./dist/mods.d.ts",
+      "import": "./dist/mods.js"
     }
   },
   "scripts": {
